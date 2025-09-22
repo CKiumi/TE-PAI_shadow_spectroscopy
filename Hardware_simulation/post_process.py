@@ -65,7 +65,7 @@ if __name__ == "__main__":
     
     # bit_array=job_id[0]
     # -------- Hardware settings --------
-    token = "a45a83ee7019f1014b4127be22db5603bb491fbb1c9785f839c816be85c62d629584c756100bcb9eb0fb0fef59d22218354e390f558a2321e6e06bd4c7de0869" # Token for the hardware
+    token = "" # Token for the hardware
     is_save = True
     hardware = Hardware(token,set_backend=False,initiate_service=True)  # Hardware class to retrieve data from the job.id
    
