@@ -25,5 +25,12 @@ repository = "https://github.com/hugopgs/Frontier_Lab"
 [dependency-groups]
 test = ["pytest>=8.3.5,<9"]
 
-[tool.uv]
-package = false
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/pai_shadow"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
