@@ -1,16 +1,11 @@
+"""Backend-independent Pauli-sum Hamiltonians.
+
+A Hamiltonian is a weighted sum of Pauli strings; this package depends only on
+numpy/scipy and is independent of any quantum-circuit backend.
 """
-Python Module to create and manipulate Hamiltonian that can be write as trensor product of Pauli operator 
-Can be used and simulate using Qisqit 
-"""
 
-__version__="1.0.0"
-__date__="13/05/2025"
-__author__="Hugo PAGES"
-
-__email__="hugo.pages@etu.unistra.fr"
-
-    
-from .ising_hamil import Ising_Hamil
-from .heisenberg_hamil import Heisenberg_Hamil
-from .spin_chain_hamil import Spin_Chain_Hamil
 from .hamiltonian import Hamiltonian
+from .heisenberg_hamil import Heisenberg_Hamil
+from .ising_hamil import Ising_Hamil
+
+__all__ = ["Hamiltonian", "Heisenberg_Hamil", "Ising_Hamil"]

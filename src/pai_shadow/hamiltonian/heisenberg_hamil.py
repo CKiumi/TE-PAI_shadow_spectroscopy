@@ -1,98 +1,58 @@
-# Written by: Hugo PAGES
-# Date: 2024-01-05
+# Heisenberg spin-chain Hamiltonian (backend-independent).
 
-# Standard library imports
-from dataclasses import dataclass
-from itertools import combinations, product
-from typing import Callable, List, Tuple
-import math as math
+from __future__ import annotations
 
-# Third-party imports
-import numpy as np
-from scipy import integrate
-import scipy.sparse as sp
-from scipy.sparse.linalg import eigsh
-from itertools import product
-
-
-# Local application imports
 from .hamiltonian import Hamiltonian
 
 
 class Heisenberg_Hamil(Hamiltonian):
+    """Time-independent Heisenberg model on ``n`` qubits.
+
+    H = jx * sum XX + jy * sum YY + jz * sum ZZ over the chosen geometry.
+
+    Parameters
+    ----------
+    n:
+        Number of qubits.
+    jx, jy, jz:
+        Coupling constants of the XX, YY and ZZ interactions.
+    periodic:
+        If True use periodic boundary conditions (qubit ``n-1`` couples to 0);
+        otherwise open boundary conditions. Ignored when ``fully_connected``.
+    fully_connected:
+        If True every pair of qubits interacts (all-to-all).
     """
-    Heisenberg_Hamil is a subclass of Hamiltonian that represents a time-independent 
-    Heisenberg spin chain Hamiltonian for `n` qubits.
 
-    This model includes interactions of the form:
-        Jx * XX + Jy * YY + Jz * ZZ
-    between neighboring qubits, with the option to enable periodic boundary conditions.
+    def __init__(
+        self,
+        n: int,
+        jx: float,
+        jy: float,
+        jz: float,
+        periodic: bool = False,
+        fully_connected: bool = False,
+    ):
+        self.jx, self.jy, self.jz = jx, jy, jz
+        self.periodic = periodic
+        self.fully_connected = fully_connected
+        couplings = {"XX": jx, "YY": jy, "ZZ": jz}
 
-    Parameters:
-    - n (int): Number of qubits (spins) in the chain.
-    - jx, jy, jz (float): Coupling constants for the XX, YY, and ZZ terms.
-    - boundarie_conditions (bool): If True, periodic boundary conditions are used;
-    otherwise, open boundary conditions apply.
-    The coefficients are constant in time but structured as functions to remain compatible 
-    with the parent Hamiltonian class.
-    """
-
-    def __init__(self, n: int, jx: float, jy: float, jz: float, boundarie_conditions: bool = False, fully_connected: bool = False):
-
-        self.jx=jx
-        self.jy=jy
-        self.jz=jz
-        self.fully_connected=fully_connected
-        self.boundarie_conditions=boundarie_conditions
-        def Jx(t):
-            return jx
-
-        def Jy(t):
-            return jy
-
-        def Jz(t):
-            return jz
         if fully_connected:
-                terms=[("XX", [k, j],Jx )for k in range(n) for j in range(k+1, n)]
-                terms += [("YY", [k, j], Jy) for k in range(n) for j in range(k + 1, n)]
-                terms += [("ZZ", [k, j], Jz) for k in range(n) for j in range(k + 1, n)]
+            pairs = [[k, j] for k in range(n) for j in range(k + 1, n)]
+        elif periodic:
+            pairs = [[k, (k + 1) % n] for k in range(n)]
         else:
+            pairs = [[k, k + 1] for k in range(n - 1)]
 
-            if boundarie_conditions:
-                terms = [
-                    (gate, [k, (k + 1) % n], Jx if gate ==
-                    "XX" else Jy if gate == "YY" else Jz)
-                    for k, gate in product(range(n), ["XX", "YY", "ZZ"])
-                ]
-            else:
-                terms = [
-                    (gate, [k, k + 1], Jx if gate ==
-                    "XX" else Jy if gate == "YY" else Jz)
-                    for k, gate in product(range(n-1), ["XX", "YY", "ZZ"])
-                ]
+        terms = [
+            (gate, list(pair), coef)
+            for pair in pairs
+            for gate, coef in couplings.items()
+        ]
 
-        self.name = f"Heisenberg_Jx{jx}_Jy{jy}_Jz{jz}_nq{n}"
+        name = f"Heisenberg_Jx{jx}_Jy{jy}_Jz{jz}_nq{n}"
         if fully_connected:
-            self.name += "_fully_connected"
-        elif boundarie_conditions:
-            self.name += "_periodic_boundary_conditions"
-        print(f" instance of Hamiltonian : {self.name} created")
-        super().__init__(n, terms)
-
-        
-    def get_trotter_steps_from_depth(self, depth: int) -> int:
-        """
-        Compute the number of Trotter steps based on the desired circuit depth.
-
-        Args:
-            depth (int): Desired circuit depth.
-
-        Returns:
-            int: Number of Trotter steps.
-            
-        """
-        if self.fully_connected:
-            N_trot=int((depth -(2.8*self.nqubits-7.2))/(3.3*self.nqubits-1.7))
-        else:
-            N_trot=int((depth -(3*self.nqubits-7))/8)
-        return N_trot
+            name += "_fully_connected"
+        elif periodic:
+            name += "_periodic"
+        super().__init__(n, terms, name=name)
