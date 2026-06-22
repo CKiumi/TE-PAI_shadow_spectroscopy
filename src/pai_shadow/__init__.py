@@ -53,7 +53,7 @@ __articles__ = [
     }
 ]
 
-from .hamiltonian import *
+from .hamil import *
 from .te_pai import TE_PAI
 from .shadow_spectro import ClassicalShadow, ShadowSpectro, Spectroscopy
 from .te_pai_shadow.te_pai_shadow_spectroscopy import TE_PAI_Shadow_Spectroscopy 

@@ -16,7 +16,7 @@ from pai_shadow.te_pai_shadow import TE_PAI_Shadow_Spectroscopy
 from pai_shadow.shadow_spectro.shadow_spectro import ShadowSpectro
 from pai_shadow.shadow_spectro.spectroscopy import Spectroscopy
 from pai_shadow.shadow_spectro.classical_shadow import ClassicalShadow
-from pai_shadow.hamiltonian.hamiltonian import Hamiltonian
+from pai_shadow.hamil import Hamiltonian
 from pai_shadow.tools_box.quantum_tools import *
 from pai_shadow.tools_box.data_file_functions import (
     get_data_file,

@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from pai_shadow.hamiltonian import (
+from pai_shadow.hamil import (
     Hamiltonian,
     Heisenberg_Hamil,
     Ising_Hamil,

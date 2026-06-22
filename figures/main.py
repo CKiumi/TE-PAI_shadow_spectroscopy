@@ -3,7 +3,7 @@
 
 # Local application imports
 from itertools import product
-import pai_shadow.hamiltonian as Hamil
+import pai_shadow.hamil as Hamil
 from pai_shadow.te_pai_shadow.te_pai_shadow_spectroscopy import TE_PAI_Shadow_Spectroscopy
 from pai_shadow.tools_box.plots_functions import *
 from pai_shadow.tools_box.quantum_tools import *

@@ -1,4 +1,4 @@
-# Backend-independent Pauli-sum Hamiltonian.
+# Backend-independent Pauli-sum Hamiltonians.
 #
 # A Hamiltonian is represented purely as a weighted sum of Pauli strings,
 #     H(t) = sum_j  c_j(t) * P_j ,
@@ -205,3 +205,117 @@ class Hamiltonian:
         unique_gaps = np.unique(np.round(gaps, rnd))
         unique_gaps[np.abs(unique_gaps) < tol] = 0.0
         return np.sort(unique_gaps)
+
+
+class Heisenberg_Hamil(Hamiltonian):
+    """Time-independent Heisenberg model on ``n`` qubits (paper Fig. 1/2 model).
+
+    H = jx * sum XX + jy * sum YY + jz * sum ZZ over the chosen geometry.
+
+    Parameters
+    ----------
+    n:
+        Number of qubits.
+    jx, jy, jz:
+        Coupling constants of the XX, YY and ZZ interactions.
+    periodic:
+        If True use periodic boundary conditions (qubit ``n-1`` couples to 0);
+        otherwise open boundary conditions. Ignored when ``fully_connected``.
+    fully_connected:
+        If True every pair of qubits interacts (all-to-all).
+    """
+
+    def __init__(
+        self,
+        n: int,
+        jx: float,
+        jy: float,
+        jz: float,
+        periodic: bool = False,
+        fully_connected: bool = False,
+    ):
+        self.jx, self.jy, self.jz = jx, jy, jz
+        self.periodic = periodic
+        self.fully_connected = fully_connected
+        couplings = {"XX": jx, "YY": jy, "ZZ": jz}
+
+        if fully_connected:
+            pairs = [[k, j] for k in range(n) for j in range(k + 1, n)]
+        elif periodic:
+            pairs = [[k, (k + 1) % n] for k in range(n)]
+        else:
+            pairs = [[k, k + 1] for k in range(n - 1)]
+
+        terms = [
+            (gate, list(pair), coef)
+            for pair in pairs
+            for gate, coef in couplings.items()
+        ]
+
+        name = f"Heisenberg_Jx{jx}_Jy{jy}_Jz{jz}_nq{n}"
+        if fully_connected:
+            name += "_fully_connected"
+        elif periodic:
+            name += "_periodic"
+        super().__init__(n, terms, name=name)
+
+
+class Ising_Hamil(Hamiltonian):
+    """Transverse/longitudinal-field Ising model on ``n`` qubits (paper Fig. 3 model).
+
+    H = -J * sum ZZ  - g * sum X  - h * sum Z
+
+    Parameters
+    ----------
+    n:
+        Number of qubits.
+    J:
+        ZZ coupling strength.
+    transverse:
+        Transverse field strength ``g`` (X terms). ``None`` disables it.
+    longitudinal:
+        Longitudinal field strength ``h`` (Z terms). ``None`` disables it.
+    periodic:
+        Periodic boundary conditions for the ZZ chain. Ignored when
+        ``fully_connected``.
+    fully_connected:
+        All-to-all ZZ interactions.
+    """
+
+    def __init__(
+        self,
+        n: int,
+        J: float,
+        transverse: float | None = None,
+        longitudinal: float | None = None,
+        periodic: bool = True,
+        fully_connected: bool = False,
+    ):
+        self.J = J
+        self.g = float(transverse) if isinstance(transverse, (int, float)) else 0.0
+        self.h = float(longitudinal) if isinstance(longitudinal, (int, float)) else 0.0
+        self.periodic = periodic
+        self.fully_connected = fully_connected
+
+        if fully_connected:
+            pairs = [[k, j] for k in range(n) for j in range(k + 1, n)]
+        elif periodic:
+            pairs = [[k, (k + 1) % n] for k in range(n)]
+        else:
+            pairs = [[k, k + 1] for k in range(n - 1)]
+
+        terms = [("ZZ", list(pair), -J) for pair in pairs]
+        if self.g:
+            terms += [("X", [k], -self.g) for k in range(n)]
+        if self.h:
+            terms += [("Z", [k], -self.h) for k in range(n)]
+
+        name = f"Ising_J{J}_h{self.h}_g{self.g}_nq{n}"
+        if fully_connected:
+            name += "_fully_connected"
+        elif periodic:
+            name += "_periodic"
+        super().__init__(n, terms, name=name)
+
+
+__all__ = ["Hamiltonian", "Heisenberg_Hamil", "Ising_Hamil"]
