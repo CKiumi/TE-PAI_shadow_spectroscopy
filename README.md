@@ -41,6 +41,7 @@ To run a simulation using the main class:
 poetry run python main.py
 ```
 
+
 This will execute the main workflow using `Te_pai_shadow`, which internally utilizes Trotterization and shadow spectroscopy.
 
 ## Post-processing
