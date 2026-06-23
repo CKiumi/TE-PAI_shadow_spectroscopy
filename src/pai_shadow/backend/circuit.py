@@ -17,6 +17,7 @@ qubit ``i``; both supported backends use little-endian amplitude indexing
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from functools import lru_cache
 from typing import List, Optional, Sequence, Tuple
 
 import numpy as np
@@ -50,25 +51,31 @@ class Gate:
     matrix: Optional[np.ndarray] = None
 
 
-def gate_matrix(gate: Gate) -> np.ndarray:
-    """Return the dense unitary matrix of ``gate`` (qiskit conventions)."""
-    name = gate.name
-    if name == "U":
-        if gate.matrix is None:
-            raise ValueError("Gate 'U' requires an explicit matrix.")
-        return np.asarray(gate.matrix, dtype=complex)
+@lru_cache(maxsize=None)
+def _matrix_cached(name: str, param: Optional[float]) -> np.ndarray:
+    """Cached matrix for parameter-only gates (keyed by name + angle).
+
+    TE-PAI uses a tiny set of angles ({+/-delta, pi}) repeated across millions of
+    gates, so caching here avoids recomputing the same cos/sin matrices.
+    """
     if name in _FIXED:
         return _FIXED[name]
     if name in ONE_QUBIT_ROTATIONS:
-        t = gate.param
         P = {"RX": _X, "RY": _Y, "RZ": _Z}[name]
-        return np.cos(t / 2) * _I - 1j * np.sin(t / 2) * P
+        return np.cos(param / 2) * _I - 1j * np.sin(param / 2) * P
     if name in TWO_QUBIT_ROTATIONS:
-        t = gate.param
-        P = _PAULI[name[1]]
-        PP = np.kron(P, P)
-        return np.cos(t / 2) * np.eye(4, dtype=complex) - 1j * np.sin(t / 2) * PP
+        PP = np.kron(_PAULI[name[1]], _PAULI[name[1]])
+        return np.cos(param / 2) * np.eye(4, dtype=complex) - 1j * np.sin(param / 2) * PP
     raise ValueError(f"Unknown gate name {name!r}.")
+
+
+def gate_matrix(gate: Gate) -> np.ndarray:
+    """Return the dense unitary matrix of ``gate`` (qiskit conventions)."""
+    if gate.name == "U":
+        if gate.matrix is None:
+            raise ValueError("Gate 'U' requires an explicit matrix.")
+        return np.asarray(gate.matrix, dtype=complex)
+    return _matrix_cached(gate.name, gate.param)
 
 
 @dataclass

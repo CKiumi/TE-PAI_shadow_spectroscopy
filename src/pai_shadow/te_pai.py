@@ -25,7 +25,9 @@ once, and per-circuit work is only collecting references to the precomputed gate
 
 from __future__ import annotations
 
-from typing import List, Tuple
+import os
+from concurrent.futures import ProcessPoolExecutor
+from typing import List, Optional, Tuple
 
 import numpy as np
 
@@ -118,8 +120,16 @@ class TEPAI:
         """Number of circuits for a target statistical error: ``(gamma/eps)**2``."""
         return int(np.ceil((self.overhead / pai_error) ** 2))
 
-    def sample(self, n_circuits: int) -> Tuple[List[Circuit], np.ndarray]:
+    def sample(self, n_circuits: int, rng=None) -> Tuple[List[Circuit], np.ndarray]:
         """Sample ``n_circuits`` TE-PAI circuits and their signed weights.
+
+        Parameters
+        ----------
+        n_circuits:
+            number of circuits to draw.
+        rng:
+            optional ``numpy`` random generator (or the ``numpy.random`` module)
+            for reproducible / independent parallel streams.
 
         Returns
         -------
@@ -130,7 +140,8 @@ class TEPAI:
         """
         if n_circuits < 1:
             raise ValueError("n_circuits must be >= 1.")
-        r = np.random.random((n_circuits, self.n_steps, self.n_terms))
+        rng = rng if rng is not None else np.random
+        r = rng.random((n_circuits, self.n_steps, self.n_terms))
         # val: 1 = identity, 2 = +/-Delta rotation, 3 = pi flip
         val = 1 + (r >= self._cdf0[None]).astype(np.int8) + (r >= self._cdf1[None]).astype(np.int8)
 
@@ -149,3 +160,82 @@ class TEPAI:
             circuits.append(Circuit(self.nq, gates, init_state=self.init_state))
             weights[s] = sign * self.overhead
         return circuits, weights
+
+    def estimate(self, observable: str, n_circuits: int, backend: str = "qulacs",
+                 shots: Optional[int] = None, n_jobs: Optional[int] = None,
+                 seed: int = 0) -> np.ndarray:
+        """Per-circuit weighted observable values, evaluated in parallel.
+
+        Generation and evaluation are fused inside worker processes (circuits
+        never cross the process boundary), and the work is split across
+        ``n_jobs`` cores. The returned array has length ``n_circuits``; its mean
+        is the unbiased estimate and ``std / sqrt(n_circuits)`` the error bar.
+
+        Parameters
+        ----------
+        observable:
+            length-``num_qubits`` Pauli string (``pauli[i]`` acts on qubit ``i``).
+        shots:
+            ``None`` -> exact per-circuit expectation (lower variance, faster
+            convergence). An integer -> that many measurement snapshots per
+            circuit (only ``I``/``Z`` observables are supported in this mode).
+        n_jobs:
+            number of worker processes (defaults to all CPU cores).
+        """
+        if n_circuits < 1:
+            raise ValueError("n_circuits must be >= 1.")
+        n_jobs = n_jobs or os.cpu_count() or 1
+        n_jobs = max(1, min(n_jobs, n_circuits))
+        sizes = [len(c) for c in np.array_split(np.arange(n_circuits), n_jobs)]
+        packed = [(self, observable, backend, sz, seed + i, shots)
+                  for i, sz in enumerate(sizes) if sz > 0]
+        if len(packed) == 1:
+            return _estimate_chunk(packed[0])
+        # Reuse a persistent worker pool so process startup is paid only once,
+        # e.g. across the time points of a spectroscopy sweep.
+        pool = _get_pool(n_jobs)
+        return np.concatenate(list(pool.map(_estimate_chunk, packed)))
+
+
+_POOL = None
+_POOL_SIZE = None
+
+
+def _get_pool(n_jobs: int) -> ProcessPoolExecutor:
+    """Lazily create and reuse a process pool (startup amortised across calls)."""
+    global _POOL, _POOL_SIZE
+    if _POOL is None or _POOL_SIZE != n_jobs:
+        if _POOL is not None:
+            _POOL.shutdown()
+        _POOL = ProcessPoolExecutor(max_workers=n_jobs)
+        _POOL_SIZE = n_jobs
+    return _POOL
+
+
+def _z_product(bitstring: str, z_qubits, nq: int) -> int:
+    """Product of Z eigenvalues (+1 for bit 0, -1 for bit 1) over ``z_qubits``."""
+    val = 1
+    for q in z_qubits:
+        val *= 1 - 2 * int(bitstring[nq - 1 - q])  # qubit q is char nq-1-q
+    return val
+
+
+def _estimate_chunk(packed):
+    """Worker: generate a chunk of TE-PAI circuits and return weighted values."""
+    tepai, observable, backend_name, n, seed, shots = packed
+    from .backend import get_backend
+
+    be = get_backend(backend_name)
+    rng = np.random.default_rng(seed)
+    circuits, weights = tepai.sample(n, rng=rng)
+    if shots is None:
+        return np.array([w * be.expectation(c, observable)
+                         for c, w in zip(circuits, weights)])
+    if any(p in ("X", "Y") for p in observable):
+        raise ValueError("shots-based snapshots support only I/Z observables; use shots=None.")
+    z_qubits = [i for i, p in enumerate(observable) if p == "Z"]
+    out = np.empty(n)
+    for k, (c, w) in enumerate(zip(circuits, weights)):
+        bits = be.sample(c, shots)
+        out[k] = w * np.mean([_z_product(b, z_qubits, tepai.nq) for b in bits])
+    return out

@@ -76,6 +76,20 @@ def test_angle_exceeds_delta_raises():
         TEPAI(h, delta=np.pi / 16, T=1.0, n_steps=2)
 
 
+def test_estimate_parallel_matches_trotter():
+    np.random.seed(0)
+    h = Ising_Hamil(3, J=1.0, transverse=0.8, periodic=False)
+    psi0 = random_state(3, seed=7)
+    T, n_steps, delta, obs = 0.6, 8, np.pi / 8, "ZZI"
+    be = get_backend("qulacs")
+    reference = be.expectation(trotter_circuit(h, T, n_steps, init_state=psi0), obs)
+
+    tp = TEPAI(h, delta, T, n_steps, init_state=psi0)
+    vals = tp.estimate(obs, 8000, backend="qulacs", n_jobs=2, seed=0)
+    assert vals.shape == (8000,)
+    assert abs(vals.mean() - reference) < 0.05
+
+
 def test_invalid_arguments():
     h = Heisenberg_Hamil(2, 1, 1, 1)
     with pytest.raises(ValueError):
