@@ -78,6 +78,17 @@ class TEPAI:
         coefs = np.array([np.real(hamil.coefs(t)) for t in step_times])  # (S, K)
         angles = 2.0 * np.abs(coefs) * dt                                # theta >= 0
 
+        # TE-PAI requires each Trotter angle to satisfy theta <= delta, otherwise
+        # the angle-interpolation overhead drops below 1 and the decomposition is
+        # invalid. Increase n_steps (smaller dt) or delta if this fails.
+        max_angle = float(angles.max()) if angles.size else 0.0
+        if max_angle > self.delta + 1e-9:
+            need = int(np.ceil(max_angle / self.delta * self.n_steps))
+            raise ValueError(
+                f"Max Trotter angle {max_angle:.4f} exceeds delta={self.delta:.4f}; "
+                f"TE-PAI needs 2|coef|*dt <= delta. Increase n_steps to >= {need}."
+            )
+
         a, b, c = _abc(angles, self.delta)
         weights3 = np.stack([np.abs(a), np.abs(b), np.abs(c)], axis=-1)  # (S, K, 3)
         probs = weights3 / weights3.sum(axis=-1, keepdims=True)

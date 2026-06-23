@@ -37,7 +37,7 @@ def test_sample_shapes_and_weights():
 def test_sampled_gate_angles_are_discrete():
     h = Heisenberg_Hamil(3, 1, 1, 1)
     delta = np.pi / 8
-    tp = TEPAI(h, delta=delta, T=1.0, n_steps=5)
+    tp = TEPAI(h, delta=delta, T=1.0, n_steps=8)  # theta = 2*1/8 = 0.25 <= delta
     circuits, _ = tp.sample(100)
     allowed = {round(delta, 12), round(-delta, 12), round(np.pi, 12)}
     for c in circuits:
@@ -67,6 +67,13 @@ def test_unbiased_estimator_matches_trotter():
     est = np.mean([w * be.expectation(c, obs) for c, w in zip(circuits, weights)])
 
     assert abs(est - reference) < 0.05
+
+
+def test_angle_exceeds_delta_raises():
+    # theta = 2*1*1.0/2 = 1.0 > delta=pi/16 -> invalid, must raise.
+    h = Heisenberg_Hamil(2, 1, 1, 1)
+    with pytest.raises(ValueError):
+        TEPAI(h, delta=np.pi / 16, T=1.0, n_steps=2)
 
 
 def test_invalid_arguments():
