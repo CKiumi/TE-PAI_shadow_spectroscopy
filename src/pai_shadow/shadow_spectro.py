@@ -18,7 +18,9 @@ Two front ends share the spectral analysis:
 from __future__ import annotations
 
 import itertools
-from typing import List, Sequence, Tuple
+import os
+from concurrent.futures import ProcessPoolExecutor
+from typing import Callable, List, Sequence, Tuple
 
 import numpy as np
 
@@ -128,25 +130,67 @@ def _spectroscopy(dt, cutoff, damping):
     return Spectroscopy(dt, cutoff, damping)
 
 
+def _data_matrix(worker: Callable, tasks: List[tuple], n_jobs) -> np.ndarray:
+    """Run the per-time-point ``worker`` over ``tasks`` and stack the rows.
+
+    Time points are independent, so they are distributed across ``n_jobs`` worker
+    processes (``n_jobs=None`` uses all CPU cores; ``n_jobs=1`` runs serially).
+    """
+    n_jobs = n_jobs or os.cpu_count() or 1
+    n_jobs = max(1, min(n_jobs, len(tasks)))
+    if n_jobs == 1:
+        rows = [worker(task) for task in tasks]
+    else:
+        with ProcessPoolExecutor(max_workers=n_jobs) as pool:
+            rows = list(pool.map(worker, tasks))
+    return np.array(rows)
+
+
+def _trotter_row(packed):
+    hamil, init_state, t, n_steps, observables, shadow_size, seed = packed
+    shadow = ClassicalShadow(seed=seed)
+    circ = trotter_circuit(hamil, t, n_steps, init_state=init_state)
+    factors = shadow.snapshots(circ, shadow_size)
+    return shadow.expectations(observables, factors)
+
+
+def _te_pai_row(packed):
+    hamil, init_state, t, delta, M, n_shots, observables, seed = packed
+    ss = seed if isinstance(seed, np.random.SeedSequence) else np.random.SeedSequence(seed)
+    s_sample, s_shadow = ss.spawn(2)
+    shadow = ClassicalShadow(seed=s_shadow)
+    cmax = max((abs(np.real(c)) for _, _, c in hamil.get_term(0.0)), default=1.0)
+    n_steps = max(1, int(np.ceil(2 * cmax * t / delta)))
+    tp = TEPAI(hamil, delta, t, n_steps, init_state=init_state)
+    circuits, weights = tp.sample(M, rng=np.random.default_rng(s_sample))
+    factors = shadow.snapshots_per_circuit(circuits, n_shots)
+    # flatten (M, n_shots) snapshots; repeat each circuit weight n_shots times
+    factors = factors.reshape(M * n_shots, hamil.nqubits, 3)
+    w = np.repeat(weights, n_shots)
+    return shadow.expectations(observables, factors, weights=w)
+
+
 def trotter_shadow_spectroscopy(
     hamil, init_state, times, n_steps, shadow_size, k=3,
-    seed=None, ljung=True, cutoff=4, damping=0.1,
+    seed=None, ljung=True, cutoff=4, damping=0.1, n_jobs=1,
 ):
-    """Shadow spectroscopy with deterministic Trotter time evolution."""
-    shadow = ClassicalShadow(seed=seed)
+    """Shadow spectroscopy with deterministic Trotter time evolution.
+
+    ``n_jobs`` worker processes split the (independent) time points; ``None``
+    uses all CPU cores, ``1`` (default) runs serially.
+    """
     observables = k_local_paulis(hamil.nqubits, k)
-    D = np.empty((len(times), len(observables)))
-    for i, t in enumerate(times):
-        circ = trotter_circuit(hamil, t, n_steps, init_state=init_state)
-        factors = shadow.snapshots(circ, shadow_size)
-        D[i] = shadow.expectations(observables, factors)
+    point_seeds = np.random.SeedSequence(seed).spawn(len(times))
+    tasks = [(hamil, init_state, float(t), n_steps, observables, shadow_size, ps)
+             for t, ps in zip(times, point_seeds)]
+    D = _data_matrix(_trotter_row, tasks, n_jobs)
     dt = float(times[1] - times[0])
     return _spectroscopy(dt, cutoff, damping).spectrum(D, ljung)
 
 
 def te_pai_shadow_spectroscopy(
     hamil, init_state, times, delta, M, k=3, n_shots=1,
-    seed=None, ljung=True, cutoff=4, damping=0.1,
+    seed=None, ljung=True, cutoff=4, damping=0.1, n_jobs=1,
 ):
     """Shadow spectroscopy with shallow TE-PAI random circuits.
 
@@ -155,19 +199,14 @@ def te_pai_shadow_spectroscopy(
     the per-observable estimate is the quasiprobability-weighted snapshot mean.
     The number of Trotter steps is chosen per time so the angle satisfies
     ``2|coef|*dt ~ delta`` (which minimises the TE-PAI sampling overhead).
+
+    ``n_jobs`` worker processes split the (independent) time points; ``None``
+    uses all CPU cores, ``1`` (default) runs serially.
     """
-    shadow = ClassicalShadow(seed=seed)
     observables = k_local_paulis(hamil.nqubits, k)
-    cmax = max((abs(np.real(c)) for _, _, c in hamil.get_term(0.0)), default=1.0)
-    D = np.empty((len(times), len(observables)))
-    for i, t in enumerate(times):
-        n_steps = max(1, int(np.ceil(2 * cmax * t / delta)))
-        tp = TEPAI(hamil, delta, t, n_steps, init_state=init_state)
-        circuits, weights = tp.sample(M)
-        factors = shadow.snapshots_per_circuit(circuits, n_shots)
-        # flatten (M, n_shots) snapshots; repeat each circuit weight n_shots times
-        factors = factors.reshape(M * n_shots, hamil.nqubits, 3)
-        w = np.repeat(weights, n_shots)
-        D[i] = shadow.expectations(observables, factors, weights=w)
+    point_seeds = np.random.SeedSequence(seed).spawn(len(times))
+    tasks = [(hamil, init_state, float(t), delta, M, n_shots, observables, ps)
+             for t, ps in zip(times, point_seeds)]
+    D = _data_matrix(_te_pai_row, tasks, n_jobs)
     dt = float(times[1] - times[0])
     return _spectroscopy(dt, cutoff, damping).spectrum(D, ljung)

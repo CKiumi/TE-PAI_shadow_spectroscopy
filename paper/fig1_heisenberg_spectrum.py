@@ -29,6 +29,7 @@ Run:  uv run python paper/fig1_heisenberg_spectrum.py [paper|quick]
 
 from __future__ import annotations
 
+import os
 import sys
 import time
 
@@ -63,11 +64,12 @@ PRESETS = {
 }
 
 SEED = 0
+N_JOBS = os.cpu_count()            # parallelise time points over all CPU cores
 
 
 def main(preset: str = "quick") -> None:
     cfg = PRESETS[preset]
-    print(f"[fig1] preset={preset!r}  params={cfg}")
+    print(f"[fig1] preset={preset!r}  n_jobs={N_JOBS}  params={cfg}")
 
     # 10-qubit Heisenberg model and the ground + 10th-excited superposition.
     H = Heisenberg_Hamil(N_QUBITS, 1.0, 1.0, 1.0)          # open chain
@@ -85,7 +87,7 @@ def main(preset: str = "quick") -> None:
         t0 = time.perf_counter()
         freqs, spec = te_pai_shadow_spectroscopy(
             H, init, times, delta=cfg["delta"], M=M, n_shots=n_s,
-            k=K_LOCAL, seed=SEED + j,
+            k=K_LOCAL, seed=SEED + j, n_jobs=N_JOBS,
         )
         peak = dominant_gap(freqs, spec)
         print(f"[fig1] TE-PAI (M={M}, N_s={n_s}): peak={peak:.3f}  "
@@ -96,7 +98,7 @@ def main(preset: str = "quick") -> None:
     t0 = time.perf_counter()
     ft, st = trotter_shadow_spectroscopy(
         H, init, times, n_steps=cfg["trotter_steps"],
-        shadow_size=cfg["trotter_shots"], k=K_LOCAL, seed=SEED + 99,
+        shadow_size=cfg["trotter_shots"], k=K_LOCAL, seed=SEED + 99, n_jobs=N_JOBS,
     )
     print(f"[fig1] Trotter (N_s={cfg['trotter_shots']}): "
           f"peak={dominant_gap(ft, st):.3f}  ({time.perf_counter() - t0:.1f}s)")

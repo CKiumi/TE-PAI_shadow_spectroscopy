@@ -29,3 +29,9 @@ Both run the three TE-PAI sample/shot splits `(M_TE-PAI, N_s)` of a fixed
 execution budget plus the Trotter baseline, demonstrating that the recovered
 spectrum depends only on the total budget, not on how it is split. The figure is
 written to `paper/fig1_<preset>.png` (PNGs are git-ignored).
+
+Time points are independent and run in parallel across all CPU cores
+(`N_JOBS` in the script; the `*_shadow_spectroscopy` functions take an `n_jobs`
+argument, default serial). On a 10-core laptop the `quick` preset takes ~40 s and
+`paper` roughly 10–20 min (the deep late-time circuits dominate and limit the
+parallel speed-up).
