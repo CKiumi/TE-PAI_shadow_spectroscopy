@@ -44,10 +44,7 @@ uv run python -c "import pai_shadow; print('ok')"
 ```
 src/pai_shadow/
 ├── hamil.py             Pauli-sum Hamiltonians (Hamiltonian, Heisenberg_Hamil, Ising_Hamil); numpy/scipy only
-├── backend/             circuit IR + simulation backends
-│   ├── circuit.py         backend-independent Circuit / Gate
-│   ├── base.py            Backend interface + NoiseSpec (depolarizing/bitflip/phaseflip/amp-damping)
-│   └── qulacs_backend.py
+├── circuit.py           qulacs-native Circuit / Gate / NoiseSpec + simulation (statevector/expectation/sample)
 ├── trotter.py           Hamiltonian -> first-order Trotter circuit
 ├── te_pai.py            TE-PAI random-circuit generator
 ├── classical_shadow.py  random Pauli-basis classical shadows
@@ -61,19 +58,17 @@ example/                 Jupyter notebooks (te_pai, shadow, shadow_spectroscopy)
 ```python
 import numpy as np
 from pai_shadow.hamil import Heisenberg_Hamil
-from pai_shadow.backend import get_backend
 from pai_shadow.trotter import trotter_circuit
 from pai_shadow.te_pai import TEPAI
 
 H = Heisenberg_Hamil(7, 1, 1, 1)          # 7-qubit Heisenberg chain
-backend = get_backend("qulacs")
 
 # exact energy gaps (classical diagonalisation)
 print(H.energy_gap()[:5])
 
-# deterministic Trotter evolution
+# deterministic Trotter evolution (the circuit simulates itself on qulacs)
 circ = trotter_circuit(H, t=1.0, n_steps=40)
-print(backend.expectation(circ, "Z" + "I" * 6))
+print(circ.expectation("Z" + "I" * 6))
 
 # TE-PAI: shallow random circuits + signed weights (unbiased estimator)
 tp = TEPAI(H, delta=np.pi / 32, T=1.0, n_steps=40)

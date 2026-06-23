@@ -23,16 +23,15 @@ from typing import Sequence
 
 import numpy as np
 
-from .backend import Circuit, get_backend
+from .circuit import Circuit
 
 _PAULI_IDX = {"X": 0, "Y": 1, "Z": 2}
 
 
 class ClassicalShadow:
-    """Random Pauli-basis classical shadows on a given simulation backend."""
+    """Random Pauli-basis classical shadows (qulacs simulation)."""
 
-    def __init__(self, backend=None, seed: int | None = None):
-        self.backend = backend if backend is not None else get_backend("qulacs")
+    def __init__(self, seed: int | None = None):
         self._rng = np.random.default_rng(seed)
 
     def _measure_basis(self, circ: Circuit, qubit: int, axis: int) -> None:
@@ -59,7 +58,7 @@ class ClassicalShadow:
             c = Circuit(nq, list(circuit.gates), init_state=circuit.init_state)
             for q in range(nq):
                 self._measure_basis(c, q, axes[s, q])
-            bitstring = self.backend.sample(c, 1)[0]
+            bitstring = c.sample(1)[0]
             for q in range(nq):
                 bit = int(bitstring[nq - 1 - q])      # qubit q is char nq-1-q
                 factors[s, q, axes[s, q]] = 3.0 * (1 - 2 * bit)

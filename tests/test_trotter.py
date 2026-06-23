@@ -4,7 +4,6 @@ import numpy as np
 import pytest
 from scipy.linalg import expm
 
-from pai_shadow.backend import get_backend
 from pai_shadow.hamil import Hamiltonian, Heisenberg_Hamil, Ising_Hamil
 from pai_shadow.trotter import trotter_circuit
 
@@ -51,7 +50,7 @@ def test_single_term_is_exact():
     h = Hamiltonian(1, [("Z", [0], 0.7)])
     psi0 = random_state(1, seed=1)
     c = trotter_circuit(h, t=1.3, n_steps=1, init_state=psi0)
-    sv = get_backend("qulacs").statevector(c)
+    sv = c.statevector()
     assert np.isclose(fidelity(sv, exact_state(h, 1.3, psi0)), 1.0, atol=1e-10)
 
 
@@ -60,7 +59,7 @@ def test_zero_time_is_identity():
     psi0 = random_state(2, seed=2)
     c = trotter_circuit(h, t=0.0, n_steps=10, init_state=psi0)
     assert len(c) == 0
-    sv = get_backend("qulacs").statevector(c)
+    sv = c.statevector()
     assert np.isclose(fidelity(sv, psi0), 1.0, atol=1e-12)
 
 
@@ -69,7 +68,7 @@ def test_converges_to_exact():
     psi0 = random_state(3, seed=3)
     t = 1.0
     c = trotter_circuit(h, t, n_steps=400, init_state=psi0)
-    sv = get_backend("qulacs").statevector(c)
+    sv = c.statevector()
     assert fidelity(sv, exact_state(h, t, psi0)) > 0.999
 
 

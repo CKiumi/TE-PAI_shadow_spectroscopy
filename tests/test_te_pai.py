@@ -3,7 +3,6 @@
 import numpy as np
 import pytest
 
-from pai_shadow.backend import get_backend
 from pai_shadow.hamil import Heisenberg_Hamil, Ising_Hamil
 from pai_shadow.te_pai import TEPAI
 from pai_shadow.trotter import trotter_circuit
@@ -58,13 +57,12 @@ def test_unbiased_estimator_matches_trotter():
     psi0 = random_state(2, seed=2)
     T, n_steps, delta = 0.6, 4, np.pi / 8
     obs = "ZZ"
-    be = get_backend("qulacs")
 
-    reference = be.expectation(trotter_circuit(h, T, n_steps, init_state=psi0), obs)
+    reference = trotter_circuit(h, T, n_steps, init_state=psi0).expectation(obs)
 
     tp = TEPAI(h, delta=delta, T=T, n_steps=n_steps, init_state=psi0)
     circuits, weights = tp.sample(15000)
-    est = np.mean([w * be.expectation(c, obs) for c, w in zip(circuits, weights)])
+    est = np.mean([w * c.expectation(obs) for c, w in zip(circuits, weights)])
 
     assert abs(est - reference) < 0.05
 
@@ -81,11 +79,10 @@ def test_estimate_parallel_matches_trotter():
     h = Ising_Hamil(3, J=1.0, transverse=0.8, periodic=False)
     psi0 = random_state(3, seed=7)
     T, n_steps, delta, obs = 0.6, 8, np.pi / 8, "ZZI"
-    be = get_backend("qulacs")
-    reference = be.expectation(trotter_circuit(h, T, n_steps, init_state=psi0), obs)
+    reference = trotter_circuit(h, T, n_steps, init_state=psi0).expectation(obs)
 
     tp = TEPAI(h, delta, T, n_steps, init_state=psi0)
-    vals = tp.estimate(obs, 8000, backend="qulacs", n_jobs=2, seed=0)
+    vals = tp.estimate(obs, 8000, n_jobs=2, seed=0)
     assert vals.shape == (8000,)
     assert abs(vals.mean() - reference) < 0.05
 

@@ -11,16 +11,16 @@ with sampling overhead ``gamma`` per term. Sampling a circuit means, for every
 options is an unbiased estimator of the deterministic first-order Trotter channel
 (see :func:`pai_shadow.trotter.trotter_circuit`).
 
-This module is backend-independent: :meth:`TEPAI.sample` returns lightweight
-:class:`~pai_shadow.backend.circuit.Circuit` objects together with their signed
-weights ``+/- gamma``. Estimating an observable ``O`` is then
+:meth:`TEPAI.sample` returns lightweight :class:`~pai_shadow.circuit.Circuit`
+objects together with their signed weights ``+/- gamma``. Estimating an
+observable ``O`` is then
 
-    <O> ~= (1/M) * sum_s  weight_s * backend.expectation(circuit_s, O).
+    <O> ~= (1/M) * sum_s  weight_s * <O>_{circuit_s}.
 
 Fast generation: the discrete set of possible gates is precomputed once as shared
-:class:`~pai_shadow.backend.circuit.Gate` objects (angles are exactly ``+/-Delta``
-or ``pi``), the three-way categorical draw is vectorised over all circuits at
-once, and per-circuit work is only collecting references to the precomputed gates.
+:class:`~pai_shadow.circuit.Gate` objects (angles are exactly ``+/-Delta`` or
+``pi``), the three-way categorical draw is vectorised over all circuits at once,
+and per-circuit work is only collecting references to the precomputed gates.
 """
 
 from __future__ import annotations
@@ -32,7 +32,7 @@ from typing import List, Optional, Tuple
 
 import numpy as np
 
-from .backend.circuit import Circuit, Gate
+from .circuit import Circuit, Gate, NoiseSpec, weighted_expectations
 from .hamil import Hamiltonian
 
 
@@ -162,9 +162,9 @@ class TEPAI:
             weights[s] = sign * self.overhead
         return circuits, weights
 
-    def estimate(self, observable: str, n_circuits: int, backend: str = "qulacs",
+    def estimate(self, observable: str, n_circuits: int,
                  shots: Optional[int] = None, n_jobs: Optional[int] = None,
-                 seed: int = 0, noise=None) -> np.ndarray:
+                 seed: int = 0, noise: NoiseSpec | None = None) -> np.ndarray:
         """Per-circuit weighted observable values, evaluated in parallel.
 
         Generation and evaluation are fused inside worker processes (circuits
@@ -191,7 +191,7 @@ class TEPAI:
         n_jobs = n_jobs or os.cpu_count() or 1
         n_jobs = max(1, min(n_jobs, n_circuits))
         sizes = [len(c) for c in np.array_split(np.arange(n_circuits), n_jobs)]
-        packed = [(self, observable, backend, sz, seed + i, shots, noise)
+        packed = [(self, observable, sz, seed + i, shots, noise)
                   for i, sz in enumerate(sizes) if sz > 0]
         if len(packed) == 1:
             return _estimate_chunk(packed[0])
@@ -247,20 +247,17 @@ def _z_product(bitstring: str, z_qubits, nq: int) -> int:
 
 def _estimate_chunk(packed):
     """Worker: generate a chunk of TE-PAI circuits and return weighted values."""
-    tepai, observable, backend_name, n, seed, shots, noise = packed
-    from .backend import get_backend
-
-    be = get_backend(backend_name, noise=noise)
+    tepai, observable, n, seed, shots, noise = packed
     rng = np.random.default_rng(seed)
     circuits, weights = tepai.sample(n, rng=rng)
     if shots is None:
-        return np.array([w * be.expectation(c, observable)
-                         for c, w in zip(circuits, weights)])
+        # exact per-circuit expectation, reusing the observable + state buffer
+        return weighted_expectations(circuits, weights, observable, noise=noise)
     if any(p in ("X", "Y") for p in observable):
         raise ValueError("shots-based snapshots support only I/Z observables; use shots=None.")
     z_qubits = [i for i, p in enumerate(observable) if p == "Z"]
     out = np.empty(n)
     for k, (c, w) in enumerate(zip(circuits, weights)):
-        bits = be.sample(c, shots)
+        bits = c.sample(shots, noise=noise)
         out[k] = w * np.mean([_z_product(b, z_qubits, tepai.nq) for b in bits])
     return out

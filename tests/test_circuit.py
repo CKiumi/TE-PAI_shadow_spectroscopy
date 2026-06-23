@@ -1,15 +1,15 @@
-"""Tests for the qulacs backend.
+"""Tests for the qulacs-native circuit simulation.
 
 The qulacs statevector/expectation results are checked against an independent
 dense numpy simulator (``dense_statevector``) that interprets the Circuit IR
-directly, so the backend is validated without relying on a second simulator.
+directly, so the circuit is validated without relying on a second simulator.
 """
 
 import numpy as np
 import pytest
 from scipy.linalg import expm
 
-from pai_shadow.backend import Circuit, NoiseSpec, get_backend
+from pai_shadow.circuit import Circuit, NoiseSpec, weighted_expectations
 
 H = np.array([[1, 1], [1, -1]], dtype=complex) / np.sqrt(2)
 
@@ -89,40 +89,42 @@ def fidelity(a, b):
 
 def test_statevector_matches_dense():
     c = sample_circuit()
-    sv = get_backend("qulacs").statevector(c)
-    assert np.isclose(fidelity(sv, dense_statevector(c)), 1.0, atol=1e-10)
+    assert np.isclose(fidelity(c.statevector(), dense_statevector(c)), 1.0, atol=1e-10)
 
 
 @pytest.mark.parametrize("pauli", ["ZZZ", "XIY", "IZX", "YYI", "XXX", "III"])
 def test_expectation_matches_dense(pauli):
     c = sample_circuit()
-    e_ql = get_backend("qulacs").expectation(c, pauli)
-    assert abs(e_ql - dense_expectation(c, pauli)) < 1e-9
+    assert abs(c.expectation(pauli) - dense_expectation(c, pauli)) < 1e-9
+
+
+def test_weighted_expectations_matches_loop():
+    # batched hot-path helper agrees with per-circuit expectation
+    cs = [sample_circuit() for _ in range(5)]
+    w = np.array([1.0, -2.0, 0.5, 3.0, -1.0])
+    batched = weighted_expectations(cs, w, "ZIX")
+    loop = np.array([wi * c.expectation("ZIX") for c, wi in zip(cs, w)])
+    assert np.allclose(batched, loop, atol=1e-9)
+    # all-identity observable returns the weights unchanged
+    assert np.allclose(weighted_expectations(cs, w, "III"), w)
 
 
 def test_deterministic_sampling_and_endianness():
     # X on qubit 0 of a 2-qubit register -> outcome qubit1=0, qubit0=1 -> "01".
     c = Circuit(2)
     c.x(0)
-    out = get_backend("qulacs").sample(c, shots=16)
-    assert out == ["01"] * 16
+    assert c.sample(shots=16) == ["01"] * 16
 
 
 def test_expectation_known_value():
     # <Z> on |1> = -1 ; <X> on H|0> = +1.
-    be = get_backend("qulacs")
-    c1 = Circuit(1)
-    c1.x(0)
-    assert np.isclose(be.expectation(c1, "Z"), -1.0, atol=1e-9)
-    c2 = Circuit(1)
-    c2.h(0)
-    assert np.isclose(be.expectation(c2, "X"), 1.0, atol=1e-9)
+    assert np.isclose(Circuit(1).x(0).expectation("Z"), -1.0, atol=1e-9)
+    assert np.isclose(Circuit(1).h(0).expectation("X"), 1.0, atol=1e-9)
 
 
 def test_noisy_sampling_runs():
     ns = NoiseSpec(p1=1e-2, p2=5e-2)
-    be = get_backend("qulacs", noise=ns)
-    out = be.sample(sample_circuit(), shots=8)
+    out = sample_circuit().sample(shots=8, noise=ns)
     assert len(out) == 8
     assert all(len(b) == 3 and set(b) <= {"0", "1"} for b in out)
 
@@ -130,16 +132,16 @@ def test_noisy_sampling_runs():
 def test_noise_kinds_physics():
     c = Circuit(1).rx(0, 0.0)  # stays |0>; noise attaches to the RX gate
     # bit flip on |0>: <Z> = 1 - 2p
-    be = get_backend("qulacs", noise=NoiseSpec(p1=0.25, kind="bitflip", one_qubit_gates=("RX",)))
-    z = np.mean([1 - 2 * int(b[-1]) for b in be.sample(c, 4000)])
+    ns = NoiseSpec(p1=0.25, kind="bitflip", one_qubit_gates=("RX",))
+    z = np.mean([1 - 2 * int(b[-1]) for b in c.sample(4000, noise=ns)])
     assert abs(z - 0.5) < 0.1
     # phase flip on |0>: leaves Z populations unchanged -> <Z> ~ 1
-    be = get_backend("qulacs", noise=NoiseSpec(p1=0.4, kind="phaseflip", one_qubit_gates=("RX",)))
-    z = np.mean([1 - 2 * int(b[-1]) for b in be.sample(c, 2000)])
+    ns = NoiseSpec(p1=0.4, kind="phaseflip", one_qubit_gates=("RX",))
+    z = np.mean([1 - 2 * int(b[-1]) for b in c.sample(2000, noise=ns)])
     assert z > 0.95
     # depolarizing pulls <Z> toward 0
-    be = get_backend("qulacs", noise=NoiseSpec(p1=0.5, kind="depolarizing", one_qubit_gates=("RX",)))
-    z = np.mean([1 - 2 * int(b[-1]) for b in be.sample(c, 4000)])
+    ns = NoiseSpec(p1=0.5, kind="depolarizing", one_qubit_gates=("RX",))
+    z = np.mean([1 - 2 * int(b[-1]) for b in c.sample(4000, noise=ns)])
     assert z < 0.95
 
 
@@ -151,9 +153,9 @@ def test_invalid_noise_kind():
 def test_noisy_expectation_matches_sampling():
     # exact noisy expectation (density matrix) ~= noisy sampling mean
     c = Circuit(2).h(0).rzz(0, 1, 0.7).rx(1, 0.5)
-    be = get_backend("qulacs", noise=NoiseSpec(p1=2e-3, p2=2e-2, kind="depolarizing"))
-    exact_noisy = be.expectation(c, "ZZ")
-    bits = be.sample(c, 8000)
+    ns = NoiseSpec(p1=2e-3, p2=2e-2, kind="depolarizing")
+    exact_noisy = c.expectation("ZZ", noise=ns)
+    bits = c.sample(8000, noise=ns)
     sampled = np.mean([(1 - 2 * int(b[-1])) * (1 - 2 * int(b[-2])) for b in bits])
     assert abs(exact_noisy - sampled) < 0.05
 

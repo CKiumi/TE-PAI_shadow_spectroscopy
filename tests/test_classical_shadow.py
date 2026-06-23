@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from pai_shadow.backend import Circuit, get_backend
+from pai_shadow.circuit import Circuit
 from pai_shadow.classical_shadow import ClassicalShadow
 
 
@@ -34,12 +34,11 @@ def test_identity_observable_is_one():
 
 def test_unbiased_versus_exact():
     cs = ClassicalShadow(seed=2)
-    be = get_backend("qulacs")
     c = Circuit(3)
     c.h(0).rxx(0, 1, 0.7).ryy(1, 2, 0.5).rz(2, 0.3)
     f = cs.snapshots(c, 12000)
     for P in ["ZII", "XYI", "IZX", "ZZZ"]:
-        assert abs(cs.expectation(P, f) - be.expectation(c, P)) < 0.12, P
+        assert abs(cs.expectation(P, f) - c.expectation(P)) < 0.12, P
 
 
 def test_expectations_batch_matches_single():

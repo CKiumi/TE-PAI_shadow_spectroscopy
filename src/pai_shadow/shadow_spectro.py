@@ -129,11 +129,11 @@ def _spectroscopy(dt, cutoff, damping):
 
 
 def trotter_shadow_spectroscopy(
-    hamil, init_state, times, n_steps, shadow_size, k=3, backend=None,
+    hamil, init_state, times, n_steps, shadow_size, k=3,
     seed=None, ljung=True, cutoff=4, damping=0.1,
 ):
     """Shadow spectroscopy with deterministic Trotter time evolution."""
-    shadow = ClassicalShadow(backend=backend, seed=seed)
+    shadow = ClassicalShadow(seed=seed)
     observables = k_local_paulis(hamil.nqubits, k)
     D = np.empty((len(times), len(observables)))
     for i, t in enumerate(times):
@@ -145,7 +145,7 @@ def trotter_shadow_spectroscopy(
 
 
 def te_pai_shadow_spectroscopy(
-    hamil, init_state, times, delta, M, k=3, backend=None,
+    hamil, init_state, times, delta, M, k=3,
     seed=None, ljung=True, cutoff=4, damping=0.1,
 ):
     """Shadow spectroscopy with shallow TE-PAI random circuits.
@@ -155,7 +155,7 @@ def te_pai_shadow_spectroscopy(
     steps is chosen per time so the angle satisfies ``2|coef|*dt ~ delta`` (which
     minimises the TE-PAI sampling overhead).
     """
-    shadow = ClassicalShadow(backend=backend, seed=seed)
+    shadow = ClassicalShadow(seed=seed)
     observables = k_local_paulis(hamil.nqubits, k)
     cmax = max((abs(np.real(c)) for _, _, c in hamil.get_term(0.0)), default=1.0)
     D = np.empty((len(times), len(observables)))

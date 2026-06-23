@@ -1,8 +1,7 @@
 """Deterministic first-order Trotter time-evolution circuits.
 
-Builds a backend-independent :class:`~pai_shadow.backend.circuit.Circuit` that
-approximates ``exp(-i H t)`` for a :class:`~pai_shadow.hamil.Hamiltonian` using
-a first-order product formula.
+Builds a :class:`~pai_shadow.circuit.Circuit` that approximates ``exp(-i H t)``
+for a :class:`~pai_shadow.hamil.Hamiltonian` using a first-order product formula.
 
 For a term ``coef * P`` of the Hamiltonian, one Trotter step of duration ``dt``
 contributes the rotation ``exp(-i coef dt P)``. With the rotation convention
@@ -13,7 +12,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from .backend.circuit import Circuit
+from .circuit import Circuit
 from .hamil import Hamiltonian
 
 
