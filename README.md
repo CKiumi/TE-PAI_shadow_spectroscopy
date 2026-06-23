@@ -56,7 +56,6 @@ src/pai_shadow/
 └── shadow_spectro.py    algorithmic shadow spectroscopy (Trotter + TE-PAI front ends)
 tests/                   flat pytest suite
 example/                 Jupyter notebooks (te_pai, shadow, shadow_spectroscopy)
-benchmark/               qiskit vs qulacs timing
 ```
 
 ## Quick start
@@ -101,9 +100,6 @@ print("recovered gap:", dominant_gap(freqs, spectrum), " exact:", e1 - e0)
 ```bash
 # tests
 uv run --group test pytest tests -q
-
-# qiskit vs qulacs Trotter benchmark
-uv run python benchmark/trotter_benchmark.py
 
 # example notebook (Trotter vs TE-PAI with error bars)
 uv run jupyter lab example/shadow_spectroscopy.ipynb   # needs jupyter installed
