@@ -39,14 +39,19 @@ from pai_shadow.shadow_spectro import (
     trotter_shadow_spectroscopy,
 )
 
-# --- reference implementation's 6-qubit settings (original main.py) ---------- #
+# --- 6-qubit settings (reference implementation, tuned to the paper's look) -- #
+# The paper does not state Fig. 2's initial state / time grid (its code and text
+# disagree), so we use the Fig. 1 recipe |E_0> + |E_10> (peak at dE_{0,10}) and a
+# grid giving the paper's x-range (~70). Delta / step count keep the TE-PAI
+# overhead modest (gamma ~ 4) while the Trotter circuit (300 steps) is deep
+# enough to be wrecked by gate noise.
 N_QUBITS = 6
-EXCITED = 40                       # initial state = |E_0> + |E_40>
+EXCITED = 10                       # initial state = |E_0> + |E_10>
 K_LOCAL = 4
 DELTA = np.pi / 2**6
-TROTTER_STEP = 0.005              # TE-PAI step size (dt_T), capped at N_TROTTER_MAX
-N_TROTTER_MAX = 150
-TROTTER_STEPS = 150              # Trotter baseline steps per circuit
+TROTTER_STEP = 0.01              # TE-PAI step size (dt_T), capped at N_TROTTER_MAX
+N_TROTTER_MAX = 300
+TROTTER_STEPS = 300             # Trotter baseline steps per circuit
 SEED = 0
 N_JOBS = os.cpu_count()
 
@@ -55,8 +60,8 @@ NOISE = NoiseSpec(p1=1e-4, p2=1e-3, kind="depolarizing")
 
 PRESETS = {
     # n_t, dt, executions per time point (TE-PAI M x N_s=1; Trotter N_s)
-    "paper": dict(n_t=70, dt=2 / 70, M_tepai=1500, n_s=1, trotter_shots=1500),
-    "quick": dict(n_t=70, dt=2 / 70, M_tepai=400,  n_s=1, trotter_shots=400),
+    "paper": dict(n_t=130, dt=0.045, M_tepai=1500, n_s=1, trotter_shots=1500),
+    "quick": dict(n_t=130, dt=0.045, M_tepai=400,  n_s=1, trotter_shots=400),
 }
 
 
