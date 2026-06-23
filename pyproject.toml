@@ -7,15 +7,12 @@ license = "Apache-2.0"
 readme = "README.md"
 requires-python = ">=3.10,<3.13"
 dependencies = [
+    "numpy",
+    "scipy==1.14.1",
     "matplotlib==3.9.2",
-    "multiprocess==0.70.17",
-    "numba==0.60.0",
+    "statsmodels>=0.14.4,<0.15",
     "qiskit>=1.2.4,<2",
     "qiskit-aer==0.15.1",
-    "qiskit-ibm-runtime==0.31.0",
-    "scipy==1.14.1",
-    "tqdm==4.66.5",
-    "statsmodels>=0.14.4,<0.15",
     "qulacs>=0.6.13",
 ]
 

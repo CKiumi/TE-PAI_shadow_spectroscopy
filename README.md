@@ -44,18 +44,19 @@ uv run python -c "import pai_shadow; print('ok')"
 
 ```
 src/pai_shadow/
-├── hamil.py        Pauli-sum Hamiltonians (Hamiltonian, Heisenberg_Hamil, Ising_Hamil); numpy/scipy only
-├── backend/        circuit IR + simulation backends
-│   ├── circuit.py    backend-independent Circuit / Gate
-│   ├── base.py       Backend interface + NoiseSpec (depolarizing)
+├── hamil.py             Pauli-sum Hamiltonians (Hamiltonian, Heisenberg_Hamil, Ising_Hamil); numpy/scipy only
+├── backend/             circuit IR + simulation backends
+│   ├── circuit.py         backend-independent Circuit / Gate
+│   ├── base.py            Backend interface + NoiseSpec (depolarizing/bitflip/phaseflip/amp-damping)
 │   ├── qiskit_backend.py
 │   └── qulacs_backend.py
-├── trotter.py      Hamiltonian -> first-order Trotter circuit
-└── te_pai.py       TE-PAI random-circuit generator
-tests/              flat pytest suite
-example/            Jupyter notebook(s)
-benchmark/          qiskit vs qulacs timing
-figures/            paper-figure / hardware scripts (legacy, being migrated)
+├── trotter.py           Hamiltonian -> first-order Trotter circuit
+├── te_pai.py            TE-PAI random-circuit generator
+├── classical_shadow.py  random Pauli-basis classical shadows
+└── shadow_spectro.py    algorithmic shadow spectroscopy (Trotter + TE-PAI front ends)
+tests/                   flat pytest suite
+example/                 Jupyter notebooks (te_pai, shadow, shadow_spectroscopy)
+benchmark/               qiskit vs qulacs timing
 ```
 
 ## Quick start
@@ -82,6 +83,19 @@ tp = TEPAI(H, delta=np.pi / 32, T=1.0, n_steps=40)
 circuits, weights = tp.sample(2000)
 ```
 
+Estimate an energy gap end-to-end via shadow spectroscopy:
+
+```python
+from pai_shadow.hamil import Heisenberg_Hamil
+from pai_shadow.shadow_spectro import te_pai_shadow_spectroscopy, dominant_gap
+
+H = Heisenberg_Hamil(4, 1, 1, 1)
+e0, e1, g, x = H.get_ground_and_excited_state(n=1)   # gap E1 - E0
+times = np.arange(50) * 0.35
+freqs, spectrum = te_pai_shadow_spectroscopy(H, g + x, times, delta=np.pi / 8, M=1500)
+print("recovered gap:", dominant_gap(freqs, spectrum), " exact:", e1 - e0)
+```
+
 ## Running things
 
 ```bash
@@ -92,7 +106,7 @@ uv run --group test pytest tests -q
 uv run python benchmark/trotter_benchmark.py
 
 # example notebook (Trotter vs TE-PAI with error bars)
-uv run jupyter lab example/te_pai_vs_trotter.ipynb   # needs jupyter installed
+uv run jupyter lab example/shadow_spectroscopy.ipynb   # needs jupyter installed
 ```
 
 ## Adding dependencies
