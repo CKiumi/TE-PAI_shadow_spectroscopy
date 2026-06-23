@@ -277,6 +277,17 @@ class Circuit:
         """Convenience: a single measurement bitstring."""
         return self.sample(1, noise)[0]
 
+    def evolved_state(self) -> QuantumState:
+        """Noiseless qulacs ``QuantumState`` after applying the circuit.
+
+        Returned so callers can ``.copy()`` it and take many cheap measurements
+        of the same evolved state (e.g. classical-shadow snapshots) without
+        re-applying the (possibly deep) circuit each time.
+        """
+        state = self._new_state(density=False)
+        self._apply(state, None)
+        return state
+
 
 # --------------------------------------------------------------------------- #
 #  Batched evaluation (TE-PAI hot path)                                         #

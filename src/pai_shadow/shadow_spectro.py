@@ -145,15 +145,16 @@ def trotter_shadow_spectroscopy(
 
 
 def te_pai_shadow_spectroscopy(
-    hamil, init_state, times, delta, M, k=3,
+    hamil, init_state, times, delta, M, k=3, n_shots=1,
     seed=None, ljung=True, cutoff=4, damping=0.1,
 ):
     """Shadow spectroscopy with shallow TE-PAI random circuits.
 
-    Each sampled TE-PAI circuit gets a single shadow snapshot; the per-observable
-    estimate is the quasiprobability-weighted snapshot mean. The number of Trotter
-    steps is chosen per time so the angle satisfies ``2|coef|*dt ~ delta`` (which
-    minimises the TE-PAI sampling overhead).
+    ``M`` TE-PAI circuits are sampled per time point and each is measured
+    ``n_shots`` times (the total circuit-execution budget is ``M * n_shots``);
+    the per-observable estimate is the quasiprobability-weighted snapshot mean.
+    The number of Trotter steps is chosen per time so the angle satisfies
+    ``2|coef|*dt ~ delta`` (which minimises the TE-PAI sampling overhead).
     """
     shadow = ClassicalShadow(seed=seed)
     observables = k_local_paulis(hamil.nqubits, k)
@@ -163,7 +164,10 @@ def te_pai_shadow_spectroscopy(
         n_steps = max(1, int(np.ceil(2 * cmax * t / delta)))
         tp = TEPAI(hamil, delta, t, n_steps, init_state=init_state)
         circuits, weights = tp.sample(M)
-        factors = shadow.snapshots_of_circuits(circuits)
-        D[i] = shadow.expectations(observables, factors, weights=weights)
+        factors = shadow.snapshots_per_circuit(circuits, n_shots)
+        # flatten (M, n_shots) snapshots; repeat each circuit weight n_shots times
+        factors = factors.reshape(M * n_shots, hamil.nqubits, 3)
+        w = np.repeat(weights, n_shots)
+        D[i] = shadow.expectations(observables, factors, weights=w)
     dt = float(times[1] - times[0])
     return _spectroscopy(dt, cutoff, damping).spectrum(D, ljung)
