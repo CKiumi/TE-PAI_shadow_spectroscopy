@@ -130,19 +130,31 @@ def _spectroscopy(dt, cutoff, damping):
     return Spectroscopy(dt, cutoff, damping)
 
 
-def _data_matrix(worker: Callable, tasks: List[tuple], n_jobs) -> np.ndarray:
+def _data_matrix(worker: Callable, tasks: List[tuple], n_jobs,
+                 costs: Sequence[float] | None = None) -> np.ndarray:
     """Run the per-time-point ``worker`` over ``tasks`` and stack the rows.
 
     Time points are independent, so they are distributed across ``n_jobs`` worker
     processes (``n_jobs=None`` uses all CPU cores; ``n_jobs=1`` runs serially).
+
+    Each task carries its own seed, so the result is identical regardless of the
+    execution order. When ``costs`` is given, tasks are dispatched heaviest-first
+    (longest-processing-time scheduling) so a slow task does not strand a worker
+    at the tail; the rows are reordered back to the original time order, so the
+    output is bit-for-bit the same as serial execution.
     """
     n_jobs = n_jobs or os.cpu_count() or 1
     n_jobs = max(1, min(n_jobs, len(tasks)))
     if n_jobs == 1:
-        rows = [worker(task) for task in tasks]
-    else:
-        with ProcessPoolExecutor(max_workers=n_jobs) as pool:
-            rows = list(pool.map(worker, tasks))
+        return np.array([worker(task) for task in tasks])
+
+    order = list(range(len(tasks)))
+    if costs is not None:
+        order.sort(key=lambda i: costs[i], reverse=True)
+    rows: list = [None] * len(tasks)
+    with ProcessPoolExecutor(max_workers=n_jobs) as pool:
+        for i, row in zip(order, pool.map(worker, [tasks[i] for i in order])):
+            rows[i] = row
     return np.array(rows)
 
 
@@ -183,7 +195,7 @@ def trotter_shadow_spectroscopy(
     point_seeds = np.random.SeedSequence(seed).spawn(len(times))
     tasks = [(hamil, init_state, float(t), n_steps, observables, shadow_size, ps)
              for t, ps in zip(times, point_seeds)]
-    D = _data_matrix(_trotter_row, tasks, n_jobs)
+    D = _data_matrix(_trotter_row, tasks, n_jobs, costs=list(times))
     dt = float(times[1] - times[0])
     return _spectroscopy(dt, cutoff, damping).spectrum(D, ljung)
 
@@ -207,6 +219,6 @@ def te_pai_shadow_spectroscopy(
     point_seeds = np.random.SeedSequence(seed).spawn(len(times))
     tasks = [(hamil, init_state, float(t), delta, M, n_shots, observables, ps)
              for t, ps in zip(times, point_seeds)]
-    D = _data_matrix(_te_pai_row, tasks, n_jobs)
+    D = _data_matrix(_te_pai_row, tasks, n_jobs, costs=list(times))
     dt = float(times[1] - times[0])
     return _spectroscopy(dt, cutoff, damping).spectrum(D, ljung)

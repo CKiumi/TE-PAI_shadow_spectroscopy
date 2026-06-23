@@ -56,6 +56,9 @@ class ClassicalShadow:
         """
         nq = circuit.num_qubits
         axes = self._rng.integers(0, 3, size=(n_snapshots, nq))
+        # Seed qulacs' (independent) sampler from our numpy RNG so the whole
+        # snapshot pipeline is reproducible and order-independent.
+        seeds = self._rng.integers(0, 2**31 - 1, size=n_snapshots)
         factors = np.zeros((n_snapshots, nq, 3))
         base = circuit.evolved_state()                # apply the circuit once
         for s in range(n_snapshots):
@@ -63,7 +66,7 @@ class ClassicalShadow:
             row = axes[s]
             for q in range(nq):
                 self._rotate_to_z(state, q, row[q])
-            value = state.sampling(1)[0]
+            value = state.sampling(1, int(seeds[s]))[0]
             for q in range(nq):
                 bit = (value >> q) & 1                 # little-endian: qubit q
                 factors[s, q, row[q]] = 3.0 * (1 - 2 * bit)
