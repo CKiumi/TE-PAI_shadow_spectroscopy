@@ -7,9 +7,12 @@ from pai_shadow.backend import Circuit, get_backend
 from pai_shadow.classical_shadow import ClassicalShadow
 
 
-def test_clifford_group_size():
-    cs = ClassicalShadow()
-    assert cs._cliffords.shape == (24, 2, 2)
+def test_snapshot_factor_values():
+    cs = ClassicalShadow(seed=5)
+    f = cs.snapshots(Circuit(3).h(0), 50)
+    # each (snapshot, qubit) measures exactly one axis: one factor in {-3,+3}, rest 0
+    assert set(np.unique(f)).issubset({-3.0, 0.0, 3.0})
+    assert np.all((np.abs(f) > 1e-9).sum(axis=2) == 1)
 
 
 def test_known_single_qubit_states():
