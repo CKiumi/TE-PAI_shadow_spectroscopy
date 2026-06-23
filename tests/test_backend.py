@@ -89,6 +89,17 @@ def test_invalid_noise_kind():
         NoiseSpec(p1=0.1, kind="banana")
 
 
+@pytest.mark.parametrize("name", ["qiskit", "qulacs"])
+def test_noisy_expectation_matches_sampling(name):
+    # exact noisy expectation (density matrix) ~= noisy sampling mean
+    c = Circuit(2).h(0).rzz(0, 1, 0.7).rx(1, 0.5)
+    be = get_backend(name, noise=NoiseSpec(p1=2e-3, p2=2e-2, kind="depolarizing"))
+    exact_noisy = be.expectation(c, "ZZ")
+    bits = be.sample(c, 8000)
+    sampled = np.mean([(1 - 2 * int(b[-1])) * (1 - 2 * int(b[-2])) for b in bits])
+    assert abs(exact_noisy - sampled) < 0.05
+
+
 def test_circuit_depth():
     c = Circuit(3)
     c.h(0).h(1).h(2)          # layer 1 (parallel)

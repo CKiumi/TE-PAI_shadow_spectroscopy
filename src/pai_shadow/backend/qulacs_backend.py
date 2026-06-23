@@ -16,7 +16,7 @@ from __future__ import annotations
 from typing import List
 
 import numpy as np
-from qulacs import Observable, QuantumCircuit as QLCircuit, QuantumState
+from qulacs import DensityMatrix, Observable, QuantumCircuit as QLCircuit, QuantumState
 from qulacs.gate import (
     RX, RY, RZ, H, S, Sdag, X, Y, Z,
     DenseMatrix, PauliRotation, DepolarizingNoise, TwoQubitDepolarizingNoise,
@@ -72,6 +72,15 @@ class QulacsBackend(Backend):
             state.set_zero_state()
         return state
 
+    def _density(self, circuit: Circuit) -> DensityMatrix:
+        dm = DensityMatrix(circuit.num_qubits)
+        if circuit.init_state is not None:
+            vec = np.asarray(circuit.init_state, dtype=complex)
+            dm.load(vec / np.linalg.norm(vec))
+        else:
+            dm.set_zero_state()
+        return dm
+
     def _circuit(self, circuit: Circuit, noisy: bool = False) -> QLCircuit:
         qc = QLCircuit(circuit.num_qubits)
         ns: NoiseSpec = self.noise
@@ -92,11 +101,17 @@ class QulacsBackend(Backend):
         return state.get_vector()
 
     def expectation(self, circuit: Circuit, pauli: str) -> float:
-        state = self._state(circuit)
-        self._circuit(circuit).update_quantum_state(state)
+        """Expectation of ``pauli``. With noise, the exact noisy value is
+        computed via density-matrix evolution (no sampling)."""
         terms = " ".join(f"{p} {i}" for i, p in enumerate(pauli) if p != "I")
         if not terms:  # all-identity observable
-            return float(np.real(np.vdot(state.get_vector(), state.get_vector())))
+            return 1.0
+        if self.noise.is_noiseless():
+            state = self._state(circuit)
+            self._circuit(circuit).update_quantum_state(state)
+        else:
+            state = self._density(circuit)
+            self._circuit(circuit, noisy=True).update_quantum_state(state)
         obs = Observable(circuit.num_qubits)
         obs.add_operator(1.0, terms)
         return float(np.real(obs.get_expectation_value(state)))

@@ -67,7 +67,11 @@ class Backend(ABC):
 
     @abstractmethod
     def expectation(self, circuit: Circuit, pauli: str) -> float:
-        """Ideal expectation value ``<pauli>`` of the output state."""
+        """Expectation value ``<pauli>`` of the output state.
+
+        With a non-trivial :class:`NoiseSpec` the **exact noisy** value is
+        returned via density-matrix simulation (no sampling).
+        """
 
     @abstractmethod
     def sample(self, circuit: Circuit, shots: int = 1) -> List[str]:

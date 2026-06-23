@@ -69,9 +69,25 @@ class QiskitBackend(Backend):
         return Statevector(self._build(circuit)).data
 
     def expectation(self, circuit: Circuit, pauli: str) -> float:
+        """Expectation of ``pauli``. With noise, the exact noisy value is
+        computed via density-matrix simulation (no sampling)."""
         # qiskit Pauli labels are little-endian: reverse so pauli[i] -> qubit i.
         obs = Pauli(pauli[::-1])
-        return float(np.real(Statevector(self._build(circuit)).expectation_value(obs)))
+        if self.noise.is_noiseless():
+            return float(np.real(Statevector(self._build(circuit)).expectation_value(obs)))
+        # density_matrix method does not support the `initialize` instruction,
+        # so set the initial density matrix explicitly instead.
+        from qiskit.quantum_info import DensityMatrix as _DM, Statevector as _SV
+        qc = QuantumCircuit(circuit.num_qubits)
+        if circuit.init_state is not None:
+            vec = np.asarray(circuit.init_state, dtype=complex)
+            qc.set_density_matrix(_DM(_SV(vec / np.linalg.norm(vec))))
+        for g in circuit.gates:
+            _APPLY[g.name](qc, g)
+        qc.save_expectation_value(obs, range(circuit.num_qubits), label="exp")
+        sim = AerSimulator(method="density_matrix", noise_model=self._noise_model())
+        res = sim.run(qc).result()
+        return float(np.real(res.data(0)["exp"]))
 
     def _noise_model(self) -> NoiseModel | None:
         ns: NoiseSpec = self.noise

@@ -179,16 +179,14 @@ class TEPAI:
             ``None`` -> exact per-circuit expectation (lower variance, faster
             convergence). An integer -> that many measurement snapshots per
             circuit (only ``I``/``Z`` observables are supported in this mode).
+            For a **noisy** ``NoiseSpec`` prefer ``shots=1``: ``shots=None`` then
+            uses an exact density-matrix evaluation per circuit, which is correct
+            but ~``2**num_qubits`` times slower (use it only for tiny systems).
         n_jobs:
             number of worker processes (defaults to all CPU cores).
         """
         if n_circuits < 1:
             raise ValueError("n_circuits must be >= 1.")
-        if noise is not None and not noise.is_noiseless() and shots is None:
-            raise ValueError(
-                "Noise only affects measurement sampling; pass shots=<int> "
-                "(exact expectation is always noiseless)."
-            )
         n_jobs = n_jobs or os.cpu_count() or 1
         n_jobs = max(1, min(n_jobs, n_circuits))
         sizes = [len(c) for c in np.array_split(np.arange(n_circuits), n_jobs)]
