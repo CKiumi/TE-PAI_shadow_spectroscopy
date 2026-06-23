@@ -1,88 +1,107 @@
-# TE_PAI Shadow Spectroscopy
+# TE-PAI Shadow Spectroscopy
 
-This repository provides a framework for quantum simulation and shadow spectroscopy, centered around the `Te_pai_shadow` class. The project is designed for extensibility and reproducibility, leveraging modern Python packaging and dependency management with [Poetry](https://python-poetry.org/).
+Low-resource quantum **energy-gap estimation** by combining **TE-PAI**
+(Time Evolution via Probabilistic Angle Interpolation) with **algorithmic shadow
+spectroscopy**. TE-PAI replaces deep Trotter time-evolution circuits with shallow
+randomized circuits, trading sampling overhead for circuit depth — and therefore
+robustness to gate noise.
 
-## Project Structure
-
-- **main.py**: Entry point to run simulations using the `Te_pai_shadow` class.
-- **post_processing.py**: Script for post-processing and analyzing simulation data.
-- **te_pai_shadow/**: Contains the main `Te_pai_shadow` implementation and related utilities.
-- **te_pai/**: Includes the Trotterization logic and related simulation tools.
-- **Shadow_Spectro/**: Implements shadow spectroscopy methods.
-- **Hamiltonian/**, **Hardware_simulation/**, **tools_box/**: Supporting modules for Hamiltonian definitions, hardware simulation, and utility functions.
-
-## Main Components
-
-### Te_pai_shadow
-
-The core class of this workspace, located in `te_pai_shadow/te_pai_shadow_spectro.py`, orchestrates quantum simulations and shadow spectroscopy. It requires:
-
-- **TE-PAI**: For Time evolution using Probabilistic angle interpolation of spin chain Hamiltonian, implemented in `TE_PAI/TE_PAI.py`.
-- **ShadowSpectro**: For shadow spectroscopy, implemented in `Shadow_Spectro/ShadowSpectro.py`.
-
-
-## Installation
-
-This project uses [Poetry](https://python-poetry.org/) for dependency management and packaging. To install all requirements:
-
-```bash
-# Install Poetry if you haven't already
-pip install poetry
-
-# Install dependencies
-poetry install
-```
-
-## Usage
-
-To run a simulation using the main class:
-
-```bash
-poetry run python main.py
-```
-
-
-This will execute the main workflow using `Te_pai_shadow`, which internally utilizes Trotterization and shadow spectroscopy.
-
-## Post-processing
-
-After running simulations, you can analyze and visualize results using:
-
-```bash
-poetry run python post_processing.py
-```
+The core library (`src/pai_shadow`) is **backend-independent**: Hamiltonians and
+circuits are plain data structures, and simulation runs on either **qiskit/Aer**
+or **qulacs**.
 
 ## Requirements
 
-All dependencies are specified in `pyproject.toml` and managed via Poetry. Typical requirements include:
+- Python **3.10–3.12**
+- [**uv**](https://docs.astral.sh/uv/) for environment and dependency management
 
-    python = "^3.10"
-    matplotlib = "3.9.2"
-    multiprocess = "0.70.17"
-    numba = "0.60.0"
-    qiskit = "^1.2.4"
-    qiskit-aer = "0.15.1"
-    qiskit-ibm-runtime = "0.31.0"
-    scipy = "1.14.1"
-    tqdm = "4.66.5"
-    statsmodels = "^0.14.4"
-To add new dependencies, use:
+Install uv (if needed):
 
 ```bash
-poetry add <package-name>
+# macOS / Linux
+curl -LsSf https://astral.sh/uv/install.sh | sh
+# or with Homebrew
+brew install uv
 ```
 
-## Testing
+## Environment setup
 
-Unit tests are provided in the `TEST/` directory. To run tests:
+`uv sync` creates a local virtual environment (`.venv/`), fetches a compatible
+Python if necessary, and installs all dependencies pinned in `uv.lock`:
 
 ```bash
-poetry run pytest
+uv sync                 # runtime dependencies
+uv sync --group test    # also install pytest (for the test suite)
+```
+
+Run anything inside the environment with `uv run`:
+
+```bash
+uv run python -c "import pai_shadow; print('ok')"
+```
+
+## Project structure
+
+```
+src/pai_shadow/
+├── hamil.py        Pauli-sum Hamiltonians (Hamiltonian, Heisenberg_Hamil, Ising_Hamil); numpy/scipy only
+├── backend/        circuit IR + simulation backends
+│   ├── circuit.py    backend-independent Circuit / Gate
+│   ├── base.py       Backend interface + NoiseSpec (depolarizing)
+│   ├── qiskit_backend.py
+│   └── qulacs_backend.py
+├── trotter.py      Hamiltonian -> first-order Trotter circuit
+└── te_pai.py       TE-PAI random-circuit generator
+tests/              flat pytest suite
+example/            Jupyter notebook(s)
+benchmark/          qiskit vs qulacs timing
+figures/            paper-figure / hardware scripts (legacy, being migrated)
+```
+
+## Quick start
+
+```python
+import numpy as np
+from pai_shadow.hamil import Heisenberg_Hamil
+from pai_shadow.backend import get_backend
+from pai_shadow.trotter import trotter_circuit
+from pai_shadow.te_pai import TEPAI
+
+H = Heisenberg_Hamil(7, 1, 1, 1)          # 7-qubit Heisenberg chain
+backend = get_backend("qulacs")            # or "qiskit"
+
+# exact energy gaps (classical diagonalisation)
+print(H.energy_gap()[:5])
+
+# deterministic Trotter evolution
+circ = trotter_circuit(H, t=1.0, n_steps=40)
+print(backend.expectation(circ, "Z" + "I" * 6))
+
+# TE-PAI: shallow random circuits + signed weights (unbiased estimator)
+tp = TEPAI(H, delta=np.pi / 32, T=1.0, n_steps=40)
+circuits, weights = tp.sample(2000)
+```
+
+## Running things
+
+```bash
+# tests
+uv run --group test pytest tests -q
+
+# qiskit vs qulacs Trotter benchmark
+uv run python benchmark/trotter_benchmark.py
+
+# example notebook (Trotter vs TE-PAI with error bars)
+uv run jupyter lab example/te_pai_vs_trotter.ipynb   # needs jupyter installed
+```
+
+## Adding dependencies
+
+```bash
+uv add <package>            # runtime dependency
+uv add --group test <pkg>   # test-only dependency
 ```
 
 ## License
 
-See [LICENSE](LICENSE) for details.
-
----
-For further details, refer to the source code and docstrings within each module.
+See [LICENSE](LICENSE).
