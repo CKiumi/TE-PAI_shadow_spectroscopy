@@ -61,9 +61,9 @@ class Hamiltonian:
 
     Notes
     -----
-    Qubit 0 is the most significant tensor factor (it is the left-most operand
-    of the Kronecker product), matching the original convention of this project.
-    The Hamiltonian is assumed Hermitian for the spectral helpers.
+    Qubit 0 is the least-significant tensor factor (little-endian), matching the
+    simulation backends, so eigenvectors can be used directly as circuit initial
+    states. The Hamiltonian is assumed Hermitian for the spectral helpers.
     """
 
     def __init__(self, num_qubits: int, terms: List[Term], name: str | None = None):
@@ -154,7 +154,9 @@ class Hamiltonian:
             factors = [_PAULI_1Q["I"]] * self.nqubits
             for p, q in zip(pauli, qubits):
                 factors[q] = _PAULI_1Q[p]
-            term_op = reduce(lambda A, B: sp.kron(A, B, format="csr"), factors)
+            # little-endian: qubit 0 is the least-significant factor (right-most
+            # in the Kronecker product), matching the simulation backends.
+            term_op = reduce(lambda A, B: sp.kron(A, B, format="csr"), factors[::-1])
             H = H + _eval(coeff, t) * term_op
         return H
 

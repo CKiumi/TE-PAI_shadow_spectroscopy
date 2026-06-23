@@ -66,9 +66,9 @@ def test_single_qubit_matrix():
 
 
 def test_qubit_ordering_convention():
-    # Qubit 0 is the most significant tensor factor (left-most in the kron).
-    assert np.allclose(Hamiltonian(2, [("Z", [0], 1.0)]).to_dense(), np.kron(Z, I2))
-    assert np.allclose(Hamiltonian(2, [("Z", [1], 1.0)]).to_dense(), np.kron(I2, Z))
+    # Little-endian: qubit 0 is the least-significant factor (right-most in kron).
+    assert np.allclose(Hamiltonian(2, [("Z", [0], 1.0)]).to_dense(), np.kron(I2, Z))
+    assert np.allclose(Hamiltonian(2, [("Z", [1], 1.0)]).to_dense(), np.kron(Z, I2))
 
 
 def test_two_qubit_term_matrix():
@@ -123,7 +123,8 @@ def test_add_same_size():
     b = Hamiltonian(2, [("Z", [1], 1.0)])
     s = a + b
     assert len(s) == 2 and s.nqubits == 2
-    assert np.allclose(s.to_dense(), np.kron(X, I2) + np.kron(I2, Z))
+    # little-endian: X on qubit 0 -> I⊗X, Z on qubit 1 -> Z⊗I
+    assert np.allclose(s.to_dense(), np.kron(I2, X) + np.kron(Z, I2))
 
 
 def test_add_size_mismatch_raises():

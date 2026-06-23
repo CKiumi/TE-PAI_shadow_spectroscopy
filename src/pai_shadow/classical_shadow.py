@@ -65,18 +65,32 @@ class ClassicalShadow:
                 factors[s, q, axes[s, q]] = 3.0 * (1 - 2 * bit)
         return factors
 
-    def expectation(self, pauli: str, factors: np.ndarray) -> float:
+    def snapshots_of_circuits(self, circuits: Sequence[Circuit]) -> np.ndarray:
+        """One snapshot per circuit; returns factors ``(len(circuits), nq, 3)``.
+
+        Used by TE-PAI shadow spectroscopy: each sampled TE-PAI circuit gets a
+        single shadow snapshot, later combined with its quasiprobability weight.
+        """
+        nq = circuits[0].num_qubits
+        out = np.empty((len(circuits), nq, 3))
+        for s, circ in enumerate(circuits):
+            out[s] = self.snapshots(circ, 1)[0]
+        return out
+
+    def expectation(self, pauli: str, factors: np.ndarray, weights=None) -> float:
         """Unbiased estimate of ``<pauli>`` from precomputed snapshot factors.
 
         ``pauli`` is a length-``num_qubits`` string over ``IXYZ`` (``pauli[i]``
-        acts on qubit ``i``).
+        acts on qubit ``i``). Optional per-snapshot ``weights`` (e.g. TE-PAI
+        quasiprobability weights) give ``mean_s( w_s * prod_q factor )``.
         """
-        vals = np.ones(factors.shape[0])
+        vals = np.ones(factors.shape[0]) if weights is None else np.array(weights, float)
         for q, p in enumerate(pauli):
             if p != "I":
-                vals *= factors[:, q, _PAULI_IDX[p]]
+                vals = vals * factors[:, q, _PAULI_IDX[p]]
         return float(vals.mean())
 
-    def expectations(self, paulis: Sequence[str], factors: np.ndarray) -> np.ndarray:
+    def expectations(self, paulis: Sequence[str], factors: np.ndarray,
+                     weights=None) -> np.ndarray:
         """Estimate many Pauli observables from the same snapshots."""
-        return np.array([self.expectation(p, factors) for p in paulis])
+        return np.array([self.expectation(p, factors, weights) for p in paulis])
