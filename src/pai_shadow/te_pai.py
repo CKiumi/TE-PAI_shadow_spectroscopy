@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import os
 from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures.process import BrokenProcessPool
 from typing import List, Optional, Tuple
 
 import numpy as np
@@ -195,9 +196,18 @@ class TEPAI:
         if len(packed) == 1:
             return _estimate_chunk(packed[0])
         # Reuse a persistent worker pool so process startup is paid only once,
-        # e.g. across the time points of a spectroscopy sweep.
-        pool = _get_pool(n_jobs)
-        return np.concatenate(list(pool.map(_estimate_chunk, packed)))
+        # e.g. across the time points of a spectroscopy sweep. If the pool was
+        # broken (e.g. a previous run was interrupted), rebuild it; if it still
+        # fails, fall back to sequential execution so the call always returns.
+        try:
+            return np.concatenate(list(_get_pool(n_jobs).map(_estimate_chunk, packed)))
+        except BrokenProcessPool:
+            _reset_pool()
+        try:
+            return np.concatenate(list(_get_pool(n_jobs).map(_estimate_chunk, packed)))
+        except BrokenProcessPool:
+            _reset_pool()
+            return np.concatenate([_estimate_chunk(p) for p in packed])
 
 
 _POOL = None
@@ -209,10 +219,22 @@ def _get_pool(n_jobs: int) -> ProcessPoolExecutor:
     global _POOL, _POOL_SIZE
     if _POOL is None or _POOL_SIZE != n_jobs:
         if _POOL is not None:
-            _POOL.shutdown()
+            _POOL.shutdown(wait=False)
         _POOL = ProcessPoolExecutor(max_workers=n_jobs)
         _POOL_SIZE = n_jobs
     return _POOL
+
+
+def _reset_pool() -> None:
+    """Discard the cached pool (e.g. after it was broken by an interrupt)."""
+    global _POOL, _POOL_SIZE
+    if _POOL is not None:
+        try:
+            _POOL.shutdown(wait=False, cancel_futures=True)
+        except Exception:
+            pass
+    _POOL = None
+    _POOL_SIZE = None
 
 
 def _z_product(bitstring: str, z_qubits, nq: int) -> int:
