@@ -159,15 +159,15 @@ def _data_matrix(worker: Callable, tasks: List[tuple], n_jobs,
 
 
 def _trotter_row(packed):
-    hamil, init_state, t, n_steps, observables, shadow_size, seed = packed
+    hamil, init_state, t, n_steps, observables, shadow_size, noise, seed = packed
     shadow = ClassicalShadow(seed=seed)
     circ = trotter_circuit(hamil, t, n_steps, init_state=init_state)
-    factors = shadow.snapshots(circ, shadow_size)
+    factors = shadow.snapshots(circ, shadow_size, noise=noise)
     return shadow.expectations(observables, factors)
 
 
 def _te_pai_row(packed):
-    hamil, init_state, t, n_steps, delta, M, n_shots, observables, seed = packed
+    hamil, init_state, t, n_steps, delta, M, n_shots, noise, observables, seed = packed
     ss = seed if isinstance(seed, np.random.SeedSequence) else np.random.SeedSequence(seed)
     s_sample, s_shadow = ss.spawn(2)
     shadow = ClassicalShadow(seed=s_shadow)
@@ -177,7 +177,7 @@ def _te_pai_row(packed):
         n_steps = max(1, int(np.ceil(2 * cmax * t / delta)))
     tp = TEPAI(hamil, delta, t, n_steps, init_state=init_state)
     circuits, weights = tp.sample(M, rng=np.random.default_rng(s_sample))
-    factors = shadow.snapshots_per_circuit(circuits, n_shots)
+    factors = shadow.snapshots_per_circuit(circuits, n_shots, noise=noise)
     # flatten (M, n_shots) snapshots; repeat each circuit weight n_shots times
     factors = factors.reshape(M * n_shots, hamil.nqubits, 3)
     w = np.repeat(weights, n_shots)
@@ -185,17 +185,20 @@ def _te_pai_row(packed):
 
 
 def trotter_shadow_spectroscopy(
-    hamil, init_state, times, n_steps, shadow_size, k=3,
+    hamil, init_state, times, n_steps, shadow_size, k=3, noise=None,
     seed=None, ljung=True, cutoff=4, damping=0.1, n_jobs=1,
 ):
     """Shadow spectroscopy with deterministic Trotter time evolution.
+
+    With a :class:`NoiseSpec` ``noise``, each shadow snapshot is an independent
+    noisy (trajectory) single shot of the Trotter circuit, modelling gate noise.
 
     ``n_jobs`` worker processes split the (independent) time points; ``None``
     uses all CPU cores, ``1`` (default) runs serially.
     """
     observables = k_local_paulis(hamil.nqubits, k)
     point_seeds = np.random.SeedSequence(seed).spawn(len(times))
-    tasks = [(hamil, init_state, float(t), n_steps, observables, shadow_size, ps)
+    tasks = [(hamil, init_state, float(t), n_steps, observables, shadow_size, noise, ps)
              for t, ps in zip(times, point_seeds)]
     D = _data_matrix(_trotter_row, tasks, n_jobs, costs=list(times))
     dt = float(times[1] - times[0])
@@ -203,36 +206,45 @@ def trotter_shadow_spectroscopy(
 
 
 def te_pai_shadow_spectroscopy(
-    hamil, init_state, times, delta, M, n_steps=None, k=3, n_shots=1,
+    hamil, init_state, times, delta, M, n_steps=None,
+    trotter_step=None, n_trotter_max=None, k=3, n_shots=1, noise=None,
     seed=None, ljung=True, cutoff=4, damping=0.1, n_jobs=1,
 ):
     """Shadow spectroscopy with shallow TE-PAI random circuits.
 
-    Each time point evolves to ``t`` with a fixed ``n_steps`` first-order Trotter
-    decomposition (step size ``t / n_steps``), as in the reference implementation.
     ``M`` TE-PAI circuits are sampled per time point and each is measured
     ``n_shots`` times (the total circuit-execution budget is ``M * n_shots``); the
     per-observable estimate is the quasiprobability-weighted snapshot mean.
 
-    ``n_steps`` controls the TE-PAI sampling overhead:
+    The number of first-order Trotter steps for evolving to ``t`` is set by:
 
-    * ``n_steps=None`` (default) -- pick the minimal steps per time point so the
-      angle equals ``delta``; the overhead ``gamma`` is then ~1, i.e. TE-PAI is
-      effectively deterministic Trotter (cheap, but no TE-PAI variance).
-    * an integer -- fixed steps per circuit (the paper's scheme). The angle
-      ``2|coef|*t/n_steps`` sits a little below ``delta``, so ``gamma`` exceeds 1
-      and TE-PAI is genuinely stochastic (its peak falls slightly below Trotter's,
-      as in Fig. 1). ``n_steps`` must keep the angle ``<= delta`` or
-      :class:`TEPAI` raises. Note the overhead grows like
-      ``exp(2 t ||H||_1 tan(delta/2))``, so a small ``delta`` keeps it manageable.
+    * ``trotter_step`` (a step size ``dt_T``) -- ``n = round(t / dt_T)`` steps,
+      capped at ``n_trotter_max`` (the reference implementation's scheme).
+    * ``n_steps`` (an int) -- that many steps for every time point.
+    * neither -- adaptive: minimal steps so the angle equals ``delta`` (overhead
+      ``gamma`` ~ 1, i.e. TE-PAI reduces to deterministic Trotter).
+
+    The angle ``2|coef|*t/n`` must stay ``<= delta`` or :class:`TEPAI` raises. The
+    sampling overhead grows like ``exp(2 t ||H||_1 tan(delta/2))``, so a small
+    ``delta`` and a moderate total time keep it manageable.
+
+    With a :class:`NoiseSpec` ``noise``, each shadow snapshot is an independent
+    noisy (trajectory) single shot; because TE-PAI circuits are much shallower
+    than Trotter's, they accumulate far less gate noise (paper Fig. 2).
 
     ``n_jobs`` worker processes split the (independent) time points; ``None``
     uses all CPU cores, ``1`` (default) runs serially.
     """
+    def steps_for(t):
+        if trotter_step is not None:
+            n = max(1, int(round(t / trotter_step)))
+            return min(n, n_trotter_max) if n_trotter_max else n
+        return n_steps
+
     observables = k_local_paulis(hamil.nqubits, k)
     point_seeds = np.random.SeedSequence(seed).spawn(len(times))
     dt = float(times[1] - times[0])
-    tasks = [(hamil, init_state, float(t), n_steps, delta, M, n_shots, observables, ps)
+    tasks = [(hamil, init_state, float(t), steps_for(float(t)), delta, M, n_shots, noise, observables, ps)
              for t, ps in zip(times, point_seeds)]
     D = _data_matrix(_te_pai_row, tasks, n_jobs, costs=list(times))
     return _spectroscopy(dt, cutoff, damping).spectrum(D, ljung)

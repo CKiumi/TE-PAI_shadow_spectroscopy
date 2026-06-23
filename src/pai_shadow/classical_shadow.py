@@ -44,12 +44,14 @@ class ClassicalShadow:
             native_gate(Gate("H", (qubit,))).update_quantum_state(state)
         # axis == 2 (Z): measure directly
 
-    def snapshots(self, circuit: Circuit, n_snapshots: int) -> np.ndarray:
+    def snapshots(self, circuit: Circuit, n_snapshots: int, noise=None) -> np.ndarray:
         """Take ``n_snapshots`` shadow snapshots of ``circuit``.
 
-        The (possibly deep) circuit is evolved **once**; each snapshot is then a
-        cheap copy of the evolved state with random per-qubit basis rotations and
-        a single measurement. Returns an array of shape
+        Without ``noise`` the (possibly deep) circuit is evolved **once** and each
+        snapshot is a cheap copy of that state with random per-qubit basis
+        rotations and a single measurement. With a :class:`NoiseSpec` each
+        snapshot is an independent noisy (trajectory) realisation, so the circuit
+        is re-evolved per shot. Returns an array of shape
         ``(n_snapshots, num_qubits, 3)`` holding the per-qubit single-snapshot
         factors for the X, Y, Z observables (only the measured axis is nonzero).
         Feed it to :meth:`expectation` / :meth:`expectations`.
@@ -59,10 +61,11 @@ class ClassicalShadow:
         # Seed qulacs' (independent) sampler from our numpy RNG so the whole
         # snapshot pipeline is reproducible and order-independent.
         seeds = self._rng.integers(0, 2**31 - 1, size=n_snapshots)
+        noiseless = noise is None or noise.is_noiseless()
+        base = circuit.evolved_state() if noiseless else None
         factors = np.zeros((n_snapshots, nq, 3))
-        base = circuit.evolved_state()                # apply the circuit once
         for s in range(n_snapshots):
-            state = base.copy()
+            state = base.copy() if noiseless else circuit.evolved_state(noise)
             row = axes[s]
             for q in range(nq):
                 self._rotate_to_z(state, q, row[q])
@@ -73,22 +76,22 @@ class ClassicalShadow:
         return factors
 
     def snapshots_per_circuit(self, circuits: Sequence[Circuit],
-                              n_shots: int = 1) -> np.ndarray:
+                              n_shots: int = 1, noise=None) -> np.ndarray:
         """``n_shots`` snapshots of each circuit; factors ``(M, n_shots, nq, 3)``.
 
         Used by TE-PAI shadow spectroscopy: each sampled TE-PAI circuit is
-        evolved once and measured ``n_shots`` times, later combined with its
-        quasiprobability weight.
+        measured ``n_shots`` times, later combined with its quasiprobability
+        weight.
         """
         nq = circuits[0].num_qubits
         out = np.empty((len(circuits), n_shots, nq, 3))
         for s, circ in enumerate(circuits):
-            out[s] = self.snapshots(circ, n_shots)
+            out[s] = self.snapshots(circ, n_shots, noise=noise)
         return out
 
-    def snapshots_of_circuits(self, circuits: Sequence[Circuit]) -> np.ndarray:
+    def snapshots_of_circuits(self, circuits: Sequence[Circuit], noise=None) -> np.ndarray:
         """One snapshot per circuit; returns factors ``(len(circuits), nq, 3)``."""
-        return self.snapshots_per_circuit(circuits, 1)[:, 0]
+        return self.snapshots_per_circuit(circuits, 1, noise=noise)[:, 0]
 
     def expectation(self, pauli: str, factors: np.ndarray, weights=None) -> float:
         """Unbiased estimate of ``<pauli>`` from precomputed snapshot factors.
