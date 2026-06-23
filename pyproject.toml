@@ -16,6 +16,7 @@ dependencies = [
     "scipy==1.14.1",
     "tqdm==4.66.5",
     "statsmodels>=0.14.4,<0.15",
+    "qulacs>=0.6.13",
 ]
 
 [project.urls]
