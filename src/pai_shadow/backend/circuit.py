@@ -17,22 +17,10 @@ qubit ``i``; both supported backends use little-endian amplitude indexing
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from functools import lru_cache
 from typing import List, Optional, Sequence, Tuple
 
 import numpy as np
 
-# Fixed single-qubit matrices.
-_I = np.eye(2, dtype=complex)
-_X = np.array([[0, 1], [1, 0]], dtype=complex)
-_Y = np.array([[0, -1j], [1j, 0]], dtype=complex)
-_Z = np.array([[1, 0], [0, -1]], dtype=complex)
-_H = np.array([[1, 1], [1, -1]], dtype=complex) / np.sqrt(2)
-_S = np.array([[1, 0], [0, 1j]], dtype=complex)
-_SDG = np.array([[1, 0], [0, -1j]], dtype=complex)
-
-_FIXED = {"I": _I, "X": _X, "Y": _Y, "Z": _Z, "H": _H, "S": _S, "SDG": _SDG}
-_PAULI = {"X": _X, "Y": _Y, "Z": _Z}
 ONE_QUBIT_ROTATIONS = {"RX", "RY", "RZ"}
 TWO_QUBIT_ROTATIONS = {"RXX", "RYY", "RZZ"}
 
@@ -49,33 +37,6 @@ class Gate:
     qubits: Tuple[int, ...]
     param: Optional[float] = None
     matrix: Optional[np.ndarray] = None
-
-
-@lru_cache(maxsize=None)
-def _matrix_cached(name: str, param: Optional[float]) -> np.ndarray:
-    """Cached matrix for parameter-only gates (keyed by name + angle).
-
-    TE-PAI uses a tiny set of angles ({+/-delta, pi}) repeated across millions of
-    gates, so caching here avoids recomputing the same cos/sin matrices.
-    """
-    if name in _FIXED:
-        return _FIXED[name]
-    if name in ONE_QUBIT_ROTATIONS:
-        P = {"RX": _X, "RY": _Y, "RZ": _Z}[name]
-        return np.cos(param / 2) * _I - 1j * np.sin(param / 2) * P
-    if name in TWO_QUBIT_ROTATIONS:
-        PP = np.kron(_PAULI[name[1]], _PAULI[name[1]])
-        return np.cos(param / 2) * np.eye(4, dtype=complex) - 1j * np.sin(param / 2) * PP
-    raise ValueError(f"Unknown gate name {name!r}.")
-
-
-def gate_matrix(gate: Gate) -> np.ndarray:
-    """Return the dense unitary matrix of ``gate`` (qiskit conventions)."""
-    if gate.name == "U":
-        if gate.matrix is None:
-            raise ValueError("Gate 'U' requires an explicit matrix.")
-        return np.asarray(gate.matrix, dtype=complex)
-    return _matrix_cached(gate.name, gate.param)
 
 
 @dataclass

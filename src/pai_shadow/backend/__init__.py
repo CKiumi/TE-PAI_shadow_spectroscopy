@@ -12,7 +12,7 @@ Example
 from __future__ import annotations
 
 from .base import Backend, NoiseSpec
-from .circuit import Circuit, Gate, gate_matrix
+from .circuit import Circuit, Gate
 
 
 def get_backend(name: str, noise: NoiseSpec | None = None) -> Backend:
@@ -27,4 +27,4 @@ def get_backend(name: str, noise: NoiseSpec | None = None) -> Backend:
     raise ValueError(f"Unknown backend {name!r}; expected 'qiskit' or 'qulacs'.")
 
 
-__all__ = ["Backend", "NoiseSpec", "Circuit", "Gate", "gate_matrix", "get_backend"]
+__all__ = ["Backend", "NoiseSpec", "Circuit", "Gate", "get_backend"]

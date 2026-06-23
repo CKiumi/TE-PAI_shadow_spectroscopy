@@ -1,9 +1,11 @@
 """Qulacs implementation of the simulation backend.
 
-All gates are applied as explicit dense matrices (built with qiskit
-conventions) so the unitaries match the qiskit backend exactly, sidestepping
-qulacs' opposite rotation-sign convention. Only symmetric two-qubit rotations
-(RXX/RYY/RZZ) are used, so the qulacs target-index ordering is irrelevant.
+Gates use qulacs' native operations. qulacs' rotation gates use the opposite
+sign convention to qiskit (qulacs ``RX(i, t) = exp(+i t/2 X)``), so we negate
+the angle to match the qiskit convention ``RX(t) = exp(-i t/2 X)``. Two-qubit
+Pauli rotations (RXX/RYY/RZZ) map onto ``PauliRotation`` with the same negation.
+Custom single-qubit unitaries (``U``, e.g. classical-shadow Cliffords) are the
+only case that needs an explicit ``DenseMatrix``.
 
 Note: qulacs and qiskit parameterise depolarizing noise differently, so noisy
 results agree only approximately across backends; noiseless results match.
@@ -15,10 +17,30 @@ from typing import List
 
 import numpy as np
 from qulacs import Observable, QuantumCircuit as QLCircuit, QuantumState
-from qulacs.gate import DenseMatrix, DepolarizingNoise, TwoQubitDepolarizingNoise
+from qulacs.gate import (
+    RX, RY, RZ, H, S, Sdag, X, Y, Z,
+    DenseMatrix, PauliRotation, DepolarizingNoise, TwoQubitDepolarizingNoise,
+)
 
 from .base import Backend, NoiseSpec
-from .circuit import Circuit, gate_matrix
+from .circuit import Circuit, ONE_QUBIT_ROTATIONS, TWO_QUBIT_ROTATIONS
+
+_ROT_1Q = {"RX": RX, "RY": RY, "RZ": RZ}
+_FIXED_1Q = {"H": H, "S": S, "SDG": Sdag, "X": X, "Y": Y, "Z": Z}
+_PAULI_ID = {"X": 1, "Y": 2, "Z": 3}
+
+
+def _native_gate(g):
+    """Build the qulacs gate for an IR Gate (qiskit sign conventions)."""
+    name = g.name
+    if name in ONE_QUBIT_ROTATIONS:
+        return _ROT_1Q[name](g.qubits[0], -g.param)          # negate to match qiskit
+    if name in TWO_QUBIT_ROTATIONS:
+        pid = _PAULI_ID[name[1]]
+        return PauliRotation(list(g.qubits), [pid, pid], -g.param)
+    if name == "U":
+        return DenseMatrix(g.qubits[0], np.asarray(g.matrix, dtype=complex))
+    return _FIXED_1Q[name](g.qubits[0])
 
 
 class QulacsBackend(Backend):
@@ -38,7 +60,7 @@ class QulacsBackend(Backend):
         qc = QLCircuit(circuit.num_qubits)
         ns: NoiseSpec = self.noise
         for g in circuit.gates:
-            qc.add_gate(DenseMatrix(list(g.qubits), gate_matrix(g)))
+            qc.add_gate(_native_gate(g))
             if noisy:
                 if len(g.qubits) == 1 and g.name in ns.one_qubit_gates and ns.p1 > 0:
                     qc.add_gate(DepolarizingNoise(g.qubits[0], ns.p1))
