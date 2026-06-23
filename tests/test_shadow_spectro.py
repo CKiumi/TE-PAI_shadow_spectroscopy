@@ -1,5 +1,5 @@
 from qiskit.circuit.random import random_circuit, random_clifford_circuit
-from pai_shadow.hamiltonian.hamiltonian import Hamiltonian
+from pai_shadow.hamil import Hamiltonian
 from tqdm import tqdm
 from pai_shadow.shadow_spectro.shadow_spectro import ShadowSpectro
 from pai_shadow.shadow_spectro.spectroscopy import Spectroscopy
