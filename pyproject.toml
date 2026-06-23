@@ -11,8 +11,6 @@ dependencies = [
     "scipy==1.14.1",
     "matplotlib==3.9.2",
     "statsmodels>=0.14.4,<0.15",
-    "qiskit>=1.2.4,<2",
-    "qiskit-aer==0.15.1",
     "qulacs>=0.6.13",
 ]
 

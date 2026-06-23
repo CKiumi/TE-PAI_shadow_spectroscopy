@@ -51,7 +51,7 @@ def test_single_term_is_exact():
     h = Hamiltonian(1, [("Z", [0], 0.7)])
     psi0 = random_state(1, seed=1)
     c = trotter_circuit(h, t=1.3, n_steps=1, init_state=psi0)
-    sv = get_backend("qiskit").statevector(c)
+    sv = get_backend("qulacs").statevector(c)
     assert np.isclose(fidelity(sv, exact_state(h, 1.3, psi0)), 1.0, atol=1e-10)
 
 
@@ -64,13 +64,12 @@ def test_zero_time_is_identity():
     assert np.isclose(fidelity(sv, psi0), 1.0, atol=1e-12)
 
 
-@pytest.mark.parametrize("name", ["qiskit", "qulacs"])
-def test_converges_to_exact(name):
+def test_converges_to_exact():
     h = Ising_Hamil(3, J=1.0, transverse=1.0, periodic=False)  # non-commuting terms
     psi0 = random_state(3, seed=3)
     t = 1.0
     c = trotter_circuit(h, t, n_steps=400, init_state=psi0)
-    sv = get_backend(name).statevector(c)
+    sv = get_backend("qulacs").statevector(c)
     assert fidelity(sv, exact_state(h, t, psi0)) > 0.999
 
 

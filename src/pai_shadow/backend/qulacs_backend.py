@@ -1,19 +1,16 @@
 """Qulacs implementation of the simulation backend.
 
 Gates use qulacs' native operations. qulacs' rotation gates use the opposite
-sign convention to qiskit (qulacs ``RX(i, t) = exp(+i t/2 X)``), so we negate
-the angle to match the qiskit convention ``RX(t) = exp(-i t/2 X)``. Two-qubit
-Pauli rotations (RXX/RYY/RZZ) map onto ``PauliRotation`` with the same negation.
-Custom single-qubit unitaries (``U``, e.g. classical-shadow Cliffords) are the
-only case that needs an explicit ``DenseMatrix``.
+sign convention (qulacs ``RX(i, t) = exp(+i t/2 X)``), so we negate the angle to
+match the IR convention ``RX(t) = exp(-i t/2 X)``. Two-qubit Pauli rotations
+(RXX/RYY/RZZ) map onto ``PauliRotation`` with the same negation. Custom
+single-qubit unitaries (``U``, e.g. classical-shadow Cliffords) are the only
+case that needs an explicit ``DenseMatrix``.
 
 Performance: native gate objects are cached by ``(name, param, qubits)`` and
 applied **directly to the state** (no per-circuit ``QuantumCircuit`` is built).
 TE-PAI reuses a tiny set of gates (angles are exactly +/-delta or pi across
 qubit pairs), so this removes the dominant per-circuit construction overhead.
-
-Note: qulacs and qiskit parameterise depolarizing noise differently, so noisy
-results agree only approximately across backends; noiseless results match.
 """
 
 from __future__ import annotations
@@ -47,7 +44,7 @@ _NOISE_1Q = {
 def _native_cached(name, param, qubits):
     """Cached qulacs gate for parameter gates (reused across circuits/states)."""
     if name in ONE_QUBIT_ROTATIONS:
-        return _ROT_1Q[name](qubits[0], -param)              # negate to match qiskit
+        return _ROT_1Q[name](qubits[0], -param)              # negate: qulacs uses +i sign
     if name in TWO_QUBIT_ROTATIONS:
         pid = _PAULI_ID[name[1]]
         return PauliRotation(list(qubits), [pid, pid], -param)
@@ -144,5 +141,5 @@ class QulacsBackend(Backend):
 
     @staticmethod
     def _int_to_bitstring(value: int, n: int) -> str:
-        # qubit n-1 left-most, qubit 0 right-most (matches the qiskit backend).
+        # qubit n-1 left-most, qubit 0 right-most (little-endian convention).
         return "".join(str((value >> i) & 1) for i in reversed(range(n)))

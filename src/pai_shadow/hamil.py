@@ -6,8 +6,8 @@
 # a chosen subset of qubits and c_j is a (possibly time-dependent) coefficient.
 #
 # This module depends only on numpy/scipy. It knows nothing about quantum
-# circuits, qiskit, or any simulation backend: turning a Hamiltonian into a
-# circuit (Trotterization, QASM, ...) is the responsibility of a separate layer.
+# circuits or any simulation backend: turning a Hamiltonian into a circuit
+# (Trotterization, ...) is the responsibility of a separate layer.
 
 from __future__ import annotations
 

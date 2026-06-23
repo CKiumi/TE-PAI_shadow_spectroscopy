@@ -4,7 +4,7 @@ Backend-independent building blocks for estimating energy gaps via TE-PAI shadow
 spectroscopy:
 
 - :mod:`pai_shadow.hamil`    -- Pauli-sum Hamiltonians (numpy/scipy only).
-- :mod:`pai_shadow.backend`  -- circuit IR + qiskit/qulacs simulation backends.
+- :mod:`pai_shadow.backend`  -- circuit IR + qulacs simulation backend.
 - :mod:`pai_shadow.trotter`  -- deterministic first-order Trotter circuits.
 - :mod:`pai_shadow.te_pai`   -- TE-PAI random-circuit generator.
 

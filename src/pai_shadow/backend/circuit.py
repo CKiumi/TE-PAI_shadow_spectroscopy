@@ -2,16 +2,15 @@
 
 A :class:`Circuit` is a flat list of :class:`Gate` operations on a fixed number
 of qubits, with an optional initial state vector. It carries no dependency on
-any simulator; concrete backends (qiskit, qulacs) translate it to their native
-representation.
+any simulator; the qulacs backend translates it to its native representation.
 
-Gate conventions follow qiskit:
+Gate conventions follow the standard sign convention:
     RX(t) = exp(-i t/2 X),  RZ(t) = exp(-i t/2 Z),
     RXX(t) = exp(-i t/2 X⊗X),  etc.
 The two-qubit rotation gates (RXX/RYY/RZZ) are symmetric, so the order of their
 two qubit arguments is irrelevant. Qubit ``i`` of the circuit maps to native
-qubit ``i``; both supported backends use little-endian amplitude indexing
-(qubit 0 is the least-significant bit).
+qubit ``i``; amplitudes use little-endian indexing (qubit 0 is the
+least-significant bit).
 """
 
 from __future__ import annotations

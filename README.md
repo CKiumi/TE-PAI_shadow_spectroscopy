@@ -7,8 +7,7 @@ randomized circuits, trading sampling overhead for circuit depth — and therefo
 robustness to gate noise.
 
 The core library (`src/pai_shadow`) is **backend-independent**: Hamiltonians and
-circuits are plain data structures, and simulation runs on either **qiskit/Aer**
-or **qulacs**.
+circuits are plain data structures, and simulation runs on **qulacs**.
 
 ## Requirements
 
@@ -48,7 +47,6 @@ src/pai_shadow/
 ├── backend/             circuit IR + simulation backends
 │   ├── circuit.py         backend-independent Circuit / Gate
 │   ├── base.py            Backend interface + NoiseSpec (depolarizing/bitflip/phaseflip/amp-damping)
-│   ├── qiskit_backend.py
 │   └── qulacs_backend.py
 ├── trotter.py           Hamiltonian -> first-order Trotter circuit
 ├── te_pai.py            TE-PAI random-circuit generator
@@ -68,7 +66,7 @@ from pai_shadow.trotter import trotter_circuit
 from pai_shadow.te_pai import TEPAI
 
 H = Heisenberg_Hamil(7, 1, 1, 1)          # 7-qubit Heisenberg chain
-backend = get_backend("qulacs")            # or "qiskit"
+backend = get_backend("qulacs")
 
 # exact energy gaps (classical diagonalisation)
 print(H.energy_gap()[:5])

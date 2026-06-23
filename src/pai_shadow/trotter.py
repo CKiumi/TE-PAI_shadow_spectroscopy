@@ -5,8 +5,8 @@ approximates ``exp(-i H t)`` for a :class:`~pai_shadow.hamil.Hamiltonian` using
 a first-order product formula.
 
 For a term ``coef * P`` of the Hamiltonian, one Trotter step of duration ``dt``
-contributes the rotation ``exp(-i coef dt P)``. With the qiskit rotation
-convention ``R_P(theta) = exp(-i theta/2 P)`` this is angle ``theta = 2 coef dt``.
+contributes the rotation ``exp(-i coef dt P)``. With the rotation convention
+``R_P(theta) = exp(-i theta/2 P)`` this is angle ``theta = 2 coef dt``.
 """
 
 from __future__ import annotations
