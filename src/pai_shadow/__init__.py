@@ -1,59 +1,17 @@
+"""TE-PAI shadow spectroscopy.
 
-"""
-Python Module to do TE_PAI shadow spectroscopy 
-based on the following articles:  "Algorithmic Shadow Spectroscopy" from  "Hans Hon Sang Chan", "Richard Meister", "Matthew L. Goh", "Bálint Koczor"
-"TE-PAI: Exact Time Evolution by Sampling Random Circuits" from "Chusei Kiumi" and "Bálint Koczor"
+Backend-independent building blocks for estimating energy gaps via TE-PAI shadow
+spectroscopy:
 
-The module te_pai, Shadow_Spectroscopy, Hamiltonian , Hardware simulationcan all be used independantly from the others. 
-One should be aware of How hamiltonian are defined in this project: 
-We define any Hamiltonian that can be write as a linear combinaison  of pauli operation as : 
-[("Pauli", [qubit], coef),...]
+- :mod:`pai_shadow.hamil`    -- Pauli-sum Hamiltonians (numpy/scipy only).
+- :mod:`pai_shadow.backend`  -- circuit IR + qiskit/qulacs simulation backends.
+- :mod:`pai_shadow.trotter`  -- deterministic first-order Trotter circuits.
+- :mod:`pai_shadow.te_pai`   -- TE-PAI random-circuit generator.
 
-exemple : 
-[("ZZ", [0,1], -2),("ZZ", [1,2], -2),("X", [0], -0.1)("X", [1], -0.1)("X", [2], -0.1)]
-
-is equivalent to : 
-H=-2(Z0Z1+Z1Z2)-0.1(X0+X1+X2)
-where Pn is the P pauli applied to the n qubits
-
-The main, and the tests need the use of the "Quantum_tools" folder
-
-
+Hamiltonians are linear combinations of Pauli strings, e.g.
+``[("ZZ", [0, 1], -2.0), ("X", [0], -0.1)]`` for ``H = -2 Z0 Z1 - 0.1 X0``.
 """
 
-__version__="1.0.0"
+from .hamil import Hamiltonian, Heisenberg_Hamil, Ising_Hamil
 
-__date__="13/05/2025"
-
-__author__="Hugo PAGES"
-
-__email__="hugo.pages@etu.unistra.fr"
-
-__license__="MIT License "  
-       
-    
-__articles__ = [
-    {
-    "title": "TE-PAI: Exact Time Evolution by Sampling Random Circuits",
-    "author": ["Chusei Kiumi", "Bálint Koczor"],
-    "year": 2024,
-    "eprint": "2410.16850",
-    "archivePrefix": "arXiv",
-    "primaryClass": "quant-ph",
-    "url": "https://arxiv.org/abs/2410.16850"
-},
-    {
-        "title": "Algorithmic Shadow Spectroscopy",
-        "author": ["Hans Hon Sang Chan", "Richard Meister", "Matthew L. Goh", "Bálint Koczor"],
-        "year": 2024,
-        "eprint": "2212.11036",
-        "archivePrefix": "arXiv",
-        "primaryClass": "quant-ph",
-        "url": "https://arxiv.org/abs/2212.11036"
-    }
-]
-
-from .hamil import *
-from .te_pai import TE_PAI
-from .shadow_spectro import ClassicalShadow, ShadowSpectro, Spectroscopy
-from .te_pai_shadow.te_pai_shadow_spectroscopy import TE_PAI_Shadow_Spectroscopy 
+__all__ = ["Hamiltonian", "Heisenberg_Hamil", "Ising_Hamil"]
