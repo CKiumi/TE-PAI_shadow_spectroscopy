@@ -76,10 +76,13 @@ class TEPAI:
         self.n_terms = len(hamil)
         self.init_state = init_state
 
-        step_times = np.linspace(0, T, n_steps)
-        dt = T / n_steps
-        coefs = np.array([np.real(hamil.coefs(t)) for t in step_times])  # (S, K)
-        angles = 2.0 * np.abs(coefs) * dt                                # theta >= 0
+        # Time-independent coefficients are assumed (the paper's Heisenberg/Ising
+        # models): every Trotter step is identical, so all per-step quantities are
+        # stored once per term rather than per (step, term).
+        terms = hamil.get_term(0.0)
+        coefs = np.array([np.real(c) for _, _, c in terms])      # (K,) per term
+        dt = T / n_steps                                         # constant step size
+        angles = 2.0 * np.abs(coefs) * dt                        # theta_j >= 0, per term
 
         # TE-PAI requires each Trotter angle to satisfy theta <= delta, otherwise
         # the angle-interpolation overhead drops below 1 and the decomposition is
@@ -92,30 +95,26 @@ class TEPAI:
                 f"TE-PAI needs 2|coef|*dt <= delta. Increase n_steps to >= {need}."
             )
 
-        a, b, c = _abc(angles, self.delta)
-        weights3 = np.stack([np.abs(a), np.abs(b), np.abs(c)], axis=-1)  # (S, K, 3)
-        probs = weights3 / weights3.sum(axis=-1, keepdims=True)
-        # cumulative thresholds: option 1 (a/identity), 2 (b/+-Delta), 3 (c/pi)
-        self._cdf0 = probs[:, :, 0]
-        self._cdf1 = probs[:, :, 0] + probs[:, :, 1]
+        a, b, c = _abc(angles, self.delta)                       # per term (K,)
+        w3 = np.stack([np.abs(a), np.abs(b), np.abs(c)], axis=-1)
+        p = w3 / w3.sum(axis=-1, keepdims=True)                  # (K, 3): I, +-Delta, pi
+        self._cdf0 = p[:, 0]                                     # identity prob, per term
+        self._cdf1 = p[:, 0] + p[:, 1]
 
-        # total sampling overhead gamma = prod cos(Delta/2 - theta)/cos(Delta/2)
-        gpt = np.cos(self.delta / 2 - angles) / np.cos(self.delta / 2)
-        self.overhead = float(np.prod(gpt))
+        # total sampling overhead gamma = prod over all (step, term) of
+        # cos(Delta/2 - theta)/cos(Delta/2); each term repeats over n_steps steps.
+        gpt = np.cos(self.delta / 2 - angles) / np.cos(self.delta / 2)   # per term
+        self.overhead = float(np.prod(gpt ** self.n_steps))
 
-        # precompute shared Gate objects per (step, term)
+        # per-term gate templates (step-independent for a time-independent H)
         signs = np.sign(coefs)
-        self._gate_delta: List[List[Gate]] = []
-        self._gate_pi: List[List[Gate]] = []
-        for i, t in enumerate(step_times):
-            row_d, row_p = [], []
-            for j, (pauli, qubits, _) in enumerate(hamil.get_term(t)):
-                name = "R" + pauli
-                qt = tuple(qubits)
-                row_d.append(Gate(name, qt, signs[i, j] * self.delta))
-                row_p.append(Gate(name, qt, np.pi))
-            self._gate_delta.append(row_d)
-            self._gate_pi.append(row_p)
+        self._gate_delta: List[Gate] = [
+            Gate("R" + pauli, tuple(q), float(signs[j]) * self.delta)
+            for j, (pauli, q, _) in enumerate(terms)
+        ]
+        self._gate_pi: List[Gate] = [
+            Gate("R" + pauli, tuple(q), np.pi) for pauli, q, _ in terms
+        ]
 
     def recommended_samples(self, pai_error: float) -> int:
         """Number of circuits for a target statistical error: ``(gamma/eps)**2``."""
@@ -142,22 +141,22 @@ class TEPAI:
         if n_circuits < 1:
             raise ValueError("n_circuits must be >= 1.")
         rng = rng if rng is not None else np.random
+        # one categorical draw per (circuit, step, term): 1=I, 2=+-Delta, 3=pi
         r = rng.random((n_circuits, self.n_steps, self.n_terms))
-        # val: 1 = identity, 2 = +/-Delta rotation, 3 = pi flip
-        val = 1 + (r >= self._cdf0[None]).astype(np.int8) + (r >= self._cdf1[None]).astype(np.int8)
-
+        val = (1 + (r >= self._cdf0[None, None, :]).astype(np.int8)
+                 + (r >= self._cdf1[None, None, :]).astype(np.int8))
         circuits: List[Circuit] = []
         weights = np.empty(n_circuits)
         for s in range(n_circuits):
             vs = val[s]
             gates: List[Gate] = []
             sign = 1
-            for i, j in np.argwhere(vs != 1):
+            for i, j in np.argwhere(vs != 1):       # row-major -> step order preserved
                 if vs[i, j] == 3:
                     sign = -sign
-                    gates.append(self._gate_pi[i][j])
+                    gates.append(self._gate_pi[j])
                 else:
-                    gates.append(self._gate_delta[i][j])
+                    gates.append(self._gate_delta[j])
             circuits.append(Circuit(self.nq, gates, init_state=self.init_state))
             weights[s] = sign * self.overhead
         return circuits, weights

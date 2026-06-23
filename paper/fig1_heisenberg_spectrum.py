@@ -51,14 +51,18 @@ EXCITED = 10                       # initial state = (|E_0> + |E_10>)/sqrt(2)
 K_LOCAL = 3                        # estimate all 3-local Pauli observables
 
 PRESETS = {
-    # name:   dict(n_t, dt, delta, trotter_steps, configs=[(M_TEPAI, N_s)...],
-    #              trotter_shots)
+    # name:   dict(n_t, dt, delta, tepai_steps, trotter_steps,
+    #              configs=[(M_TEPAI, N_s)...], trotter_shots)
+    # tepai_steps = fixed first-order Trotter steps per TE-PAI circuit (step size
+    # t/tepai_steps). It must keep every angle 2|coef|*t/tepai_steps <= delta; the
+    # small margin below delta is what gives TE-PAI its modest sampling overhead,
+    # so its peak ends up a little below Trotter's (as in the paper's Fig. 1).
     "paper": dict(
-        n_t=90, dt=0.11, delta=np.pi / 2**7, trotter_steps=650,
+        n_t=90, dt=0.11, delta=np.pi / 2**7, tepai_steps=900, trotter_steps=900,
         configs=[(1000, 1), (500, 2), (250, 4)], trotter_shots=1000,
     ),
     "quick": dict(
-        n_t=45, dt=0.11, delta=np.pi / 2**7, trotter_steps=150,
+        n_t=45, dt=0.11, delta=np.pi / 2**7, tepai_steps=450, trotter_steps=450,
         configs=[(200, 1), (100, 2), (50, 4)], trotter_shots=200,
     ),
 }
@@ -87,7 +91,7 @@ def main(preset: str = "quick") -> None:
         t0 = time.perf_counter()
         freqs, spec = te_pai_shadow_spectroscopy(
             H, init, times, delta=cfg["delta"], M=M, n_shots=n_s,
-            k=K_LOCAL, seed=SEED + j, n_jobs=N_JOBS,
+            n_steps=cfg["tepai_steps"], k=K_LOCAL, seed=SEED + j, n_jobs=N_JOBS,
         )
         peak = dominant_gap(freqs, spec)
         print(f"[fig1] TE-PAI (M={M}, N_s={n_s}): peak={peak:.3f}  "
