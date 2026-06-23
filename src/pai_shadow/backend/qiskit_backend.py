@@ -8,10 +8,31 @@ import numpy as np
 from qiskit import QuantumCircuit
 from qiskit.quantum_info import Statevector, Pauli
 from qiskit_aer import AerSimulator
-from qiskit_aer.noise import NoiseModel, depolarizing_error
+from qiskit_aer.noise import (
+    NoiseModel, depolarizing_error, pauli_error, amplitude_damping_error,
+)
 
 from .base import Backend, NoiseSpec
 from .circuit import Circuit
+
+
+def _qiskit_error_1q(kind: str, p: float):
+    if kind == "depolarizing":
+        return depolarizing_error(p, 1)
+    if kind == "bitflip":
+        return pauli_error([("X", p), ("I", 1 - p)])
+    if kind == "phaseflip":
+        return pauli_error([("Z", p), ("I", 1 - p)])
+    if kind == "amplitude_damping":
+        return amplitude_damping_error(p)
+    raise ValueError(kind)
+
+
+def _qiskit_error_2q(kind: str, p: float):
+    if kind == "depolarizing":
+        return depolarizing_error(p, 2)
+    e = _qiskit_error_1q(kind, p)        # apply 1q channel to each of the two qubits
+    return e.tensor(e)
 
 _APPLY = {
     "RX": lambda qc, g: qc.rx(g.param, g.qubits[0]),
@@ -60,9 +81,9 @@ class QiskitBackend(Backend):
         names1 = [g.lower() for g in ns.one_qubit_gates]
         names2 = [g.lower() for g in ns.two_qubit_gates]
         if ns.p1 > 0 and names1:
-            nm.add_all_qubit_quantum_error(depolarizing_error(ns.p1, 1), names1)
+            nm.add_all_qubit_quantum_error(_qiskit_error_1q(ns.kind, ns.p1), names1)
         if ns.p2 > 0 and names2:
-            nm.add_all_qubit_quantum_error(depolarizing_error(ns.p2, 2), names2)
+            nm.add_all_qubit_quantum_error(_qiskit_error_2q(ns.kind, ns.p2), names2)
         return nm
 
     def sample(self, circuit: Circuit, shots: int = 1) -> List[str]:

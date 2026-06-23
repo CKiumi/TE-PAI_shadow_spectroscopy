@@ -163,7 +163,7 @@ class TEPAI:
 
     def estimate(self, observable: str, n_circuits: int, backend: str = "qulacs",
                  shots: Optional[int] = None, n_jobs: Optional[int] = None,
-                 seed: int = 0) -> np.ndarray:
+                 seed: int = 0, noise=None) -> np.ndarray:
         """Per-circuit weighted observable values, evaluated in parallel.
 
         Generation and evaluation are fused inside worker processes (circuits
@@ -184,10 +184,15 @@ class TEPAI:
         """
         if n_circuits < 1:
             raise ValueError("n_circuits must be >= 1.")
+        if noise is not None and not noise.is_noiseless() and shots is None:
+            raise ValueError(
+                "Noise only affects measurement sampling; pass shots=<int> "
+                "(exact expectation is always noiseless)."
+            )
         n_jobs = n_jobs or os.cpu_count() or 1
         n_jobs = max(1, min(n_jobs, n_circuits))
         sizes = [len(c) for c in np.array_split(np.arange(n_circuits), n_jobs)]
-        packed = [(self, observable, backend, sz, seed + i, shots)
+        packed = [(self, observable, backend, sz, seed + i, shots, noise)
                   for i, sz in enumerate(sizes) if sz > 0]
         if len(packed) == 1:
             return _estimate_chunk(packed[0])
@@ -222,10 +227,10 @@ def _z_product(bitstring: str, z_qubits, nq: int) -> int:
 
 def _estimate_chunk(packed):
     """Worker: generate a chunk of TE-PAI circuits and return weighted values."""
-    tepai, observable, backend_name, n, seed, shots = packed
+    tepai, observable, backend_name, n, seed, shots, noise = packed
     from .backend import get_backend
 
-    be = get_backend(backend_name)
+    be = get_backend(backend_name, noise=noise)
     rng = np.random.default_rng(seed)
     circuits, weights = tepai.sample(n, rng=rng)
     if shots is None:

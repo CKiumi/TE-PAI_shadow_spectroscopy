@@ -67,6 +67,28 @@ def test_noisy_sampling_runs(name):
     assert all(len(b) == 3 and set(b) <= {"0", "1"} for b in out)
 
 
+@pytest.mark.parametrize("name", ["qiskit", "qulacs"])
+def test_noise_kinds_physics(name):
+    c = Circuit(1).rx(0, 0.0)  # stays |0>; noise attaches to the RX gate
+    # bit flip on |0>: <Z> = 1 - 2p
+    be = get_backend(name, noise=NoiseSpec(p1=0.25, kind="bitflip", one_qubit_gates=("RX",)))
+    z = np.mean([1 - 2 * int(b[-1]) for b in be.sample(c, 4000)])
+    assert abs(z - 0.5) < 0.1
+    # phase flip on |0>: leaves Z populations unchanged -> <Z> ~ 1
+    be = get_backend(name, noise=NoiseSpec(p1=0.4, kind="phaseflip", one_qubit_gates=("RX",)))
+    z = np.mean([1 - 2 * int(b[-1]) for b in be.sample(c, 2000)])
+    assert z > 0.95
+    # depolarizing pulls <Z> toward 0
+    be = get_backend(name, noise=NoiseSpec(p1=0.5, kind="depolarizing", one_qubit_gates=("RX",)))
+    z = np.mean([1 - 2 * int(b[-1]) for b in be.sample(c, 4000)])
+    assert z < 0.95
+
+
+def test_invalid_noise_kind():
+    with pytest.raises(ValueError):
+        NoiseSpec(p1=0.1, kind="banana")
+
+
 def test_circuit_depth():
     c = Circuit(3)
     c.h(0).h(1).h(2)          # layer 1 (parallel)

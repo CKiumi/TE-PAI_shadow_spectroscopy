@@ -20,6 +20,7 @@ from qulacs import Observable, QuantumCircuit as QLCircuit, QuantumState
 from qulacs.gate import (
     RX, RY, RZ, H, S, Sdag, X, Y, Z,
     DenseMatrix, PauliRotation, DepolarizingNoise, TwoQubitDepolarizingNoise,
+    BitFlipNoise, DephasingNoise, AmplitudeDampingNoise,
 )
 
 from .base import Backend, NoiseSpec
@@ -28,6 +29,21 @@ from .circuit import Circuit, ONE_QUBIT_ROTATIONS, TWO_QUBIT_ROTATIONS
 _ROT_1Q = {"RX": RX, "RY": RY, "RZ": RZ}
 _FIXED_1Q = {"H": H, "S": S, "SDG": Sdag, "X": X, "Y": Y, "Z": Z}
 _PAULI_ID = {"X": 1, "Y": 2, "Z": 3}
+_NOISE_1Q = {
+    "depolarizing": DepolarizingNoise,
+    "bitflip": BitFlipNoise,
+    "phaseflip": DephasingNoise,
+    "amplitude_damping": AmplitudeDampingNoise,
+}
+
+
+def _noise_gates(kind, qubits, p):
+    """qulacs noise gate(s) to apply after a gate on ``qubits`` with rate ``p``."""
+    if len(qubits) == 2:
+        if kind == "depolarizing":
+            return [TwoQubitDepolarizingNoise(qubits[0], qubits[1], p)]
+        return [_NOISE_1Q[kind](qubits[0], p), _NOISE_1Q[kind](qubits[1], p)]
+    return [_NOISE_1Q[kind](qubits[0], p)]
 
 
 def _native_gate(g):
@@ -63,9 +79,11 @@ class QulacsBackend(Backend):
             qc.add_gate(_native_gate(g))
             if noisy:
                 if len(g.qubits) == 1 and g.name in ns.one_qubit_gates and ns.p1 > 0:
-                    qc.add_gate(DepolarizingNoise(g.qubits[0], ns.p1))
+                    for ng in _noise_gates(ns.kind, g.qubits, ns.p1):
+                        qc.add_gate(ng)
                 elif len(g.qubits) == 2 and g.name in ns.two_qubit_gates and ns.p2 > 0:
-                    qc.add_gate(TwoQubitDepolarizingNoise(g.qubits[0], g.qubits[1], ns.p2))
+                    for ng in _noise_gates(ns.kind, g.qubits, ns.p2):
+                        qc.add_gate(ng)
         return qc
 
     def statevector(self, circuit: Circuit) -> np.ndarray:

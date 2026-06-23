@@ -11,23 +11,36 @@ import numpy as np
 from .circuit import Circuit
 
 
+NOISE_KINDS = ("depolarizing", "bitflip", "phaseflip", "amplitude_damping")
+
+
 @dataclass
 class NoiseSpec:
-    """Depolarizing noise applied after each targeted gate.
+    """Per-gate noise channel applied after each targeted gate.
 
     Parameters
     ----------
     p1, p2:
-        Depolarizing error probabilities for single- and two-qubit gates.
+        Error probabilities for single- and two-qubit gates.
+    kind:
+        Noise channel: ``"depolarizing"``, ``"bitflip"``, ``"phaseflip"``
+        (dephasing) or ``"amplitude_damping"``. Only depolarizing has a genuine
+        two-qubit version; for the other kinds the single-qubit channel is
+        applied to each qubit of a two-qubit gate.
     one_qubit_gates, two_qubit_gates:
-        Gate names that receive 1- and 2-qubit depolarizing noise. Defaults
-        follow the paper's time-evolution gateset (RX, RZ / RXX, RYY, RZZ).
+        Gate names that receive 1- and 2-qubit noise. Defaults follow the
+        paper's time-evolution gateset (RX, RZ / RXX, RYY, RZZ).
     """
 
     p1: float = 0.0
     p2: float = 0.0
+    kind: str = "depolarizing"
     one_qubit_gates: Sequence[str] = ("RX", "RY", "RZ")
     two_qubit_gates: Sequence[str] = ("RXX", "RYY", "RZZ")
+
+    def __post_init__(self):
+        if self.kind not in NOISE_KINDS:
+            raise ValueError(f"Unknown noise kind {self.kind!r}; expected one of {NOISE_KINDS}.")
 
     def is_noiseless(self) -> bool:
         return self.p1 == 0.0 and self.p2 == 0.0
