@@ -66,7 +66,7 @@ class TEPAI:
     """
 
     def __init__(self, hamil: Hamiltonian, delta: float, T: float, n_steps: int,
-                 init_state: np.ndarray | None = None):
+                 init_state: np.ndarray | None = None, strict: bool = False):
         if n_steps < 1:
             raise ValueError("n_steps must be >= 1.")
         self.nq = hamil.nqubits
@@ -84,16 +84,22 @@ class TEPAI:
         dt = T / n_steps                                         # constant step size
         angles = 2.0 * np.abs(coefs) * dt                        # theta_j >= 0, per term
 
-        # TE-PAI requires each Trotter angle to satisfy theta <= delta, otherwise
-        # the angle-interpolation overhead drops below 1 and the decomposition is
-        # invalid. Increase n_steps (smaller dt) or delta if this fails.
+        # TE-PAI's angle interpolation is a valid quasiprobability decomposition
+        # only when each Trotter angle satisfies theta <= delta. Beyond that the
+        # per-gate overhead drops below 1 and the decomposition is no longer a
+        # faithful PAI (the reference implementation does not check this and runs
+        # anyway -- e.g. its Fig. 1 hits theta > delta at large t once the step
+        # count is capped). ``strict=True`` restores the hard guard; by default we
+        # only warn so this regime can be reproduced.
         max_angle = float(angles.max()) if angles.size else 0.0
         if max_angle > self.delta + 1e-9:
             need = int(np.ceil(max_angle / self.delta * self.n_steps))
-            raise ValueError(
-                f"Max Trotter angle {max_angle:.4f} exceeds delta={self.delta:.4f}; "
-                f"TE-PAI needs 2|coef|*dt <= delta. Increase n_steps to >= {need}."
-            )
+            msg = (f"Max Trotter angle {max_angle:.4f} exceeds delta={self.delta:.4f}; "
+                   f"TE-PAI needs 2|coef|*dt <= delta (increase n_steps to >= {need}).")
+            if strict:
+                raise ValueError(msg)
+            import warnings
+            warnings.warn(msg + " Proceeding anyway (strict=False).", RuntimeWarning)
 
         a, b, c = _abc(angles, self.delta)                       # per term (K,)
         w3 = np.stack([np.abs(a), np.abs(b), np.abs(c)], axis=-1)

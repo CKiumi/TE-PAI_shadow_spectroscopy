@@ -44,17 +44,29 @@ class ClassicalShadow:
             native_gate(Gate("H", (qubit,))).update_quantum_state(state)
         # axis == 2 (Z): measure directly
 
-    def snapshots(self, circuit: Circuit, n_snapshots: int, noise=None) -> np.ndarray:
+    def snapshots(self, circuit: Circuit, n_snapshots: int, noise=None,
+                  density: bool = False) -> np.ndarray:
         """Take ``n_snapshots`` shadow snapshots of ``circuit``.
 
-        Without ``noise`` the (possibly deep) circuit is evolved **once** and each
+        Without noise the (possibly deep) circuit is evolved **once** and each
         snapshot is a cheap copy of that state with random per-qubit basis
-        rotations and a single measurement. With a :class:`NoiseSpec` each
-        snapshot is an independent noisy (trajectory) realisation, so the circuit
-        is re-evolved per shot. Returns an array of shape
-        ``(n_snapshots, num_qubits, 3)`` holding the per-qubit single-snapshot
-        factors for the X, Y, Z observables (only the measured axis is nonzero).
-        Feed it to :meth:`expectation` / :meth:`expectations`.
+        rotations and a single measurement.
+
+        With a :class:`NoiseSpec` there are two paths:
+
+        * ``density=False`` (default) -- each snapshot re-evolves the circuit as an
+          independent noisy **trajectory** shot (cheap per shot, statistically a
+          draw from the exact noisy density matrix). Best when every snapshot would
+          need a different circuit anyway (e.g. TE-PAI).
+        * ``density=True`` -- the **exact** noisy density matrix is evolved **once**
+          and every snapshot is a cheap copy of it with random rotations + one
+          measurement. For a single deep circuit measured many times (the Trotter
+          baseline) this is both exact (no trajectory variance) and far faster than
+          re-evolving per shot.
+
+        Returns an array of shape ``(n_snapshots, num_qubits, 3)`` holding the
+        per-qubit single-snapshot factors for the X, Y, Z observables (only the
+        measured axis is nonzero). Feed it to :meth:`expectation` / :meth:`expectations`.
         """
         nq = circuit.num_qubits
         axes = self._rng.integers(0, 3, size=(n_snapshots, nq))
@@ -62,10 +74,16 @@ class ClassicalShadow:
         # snapshot pipeline is reproducible and order-independent.
         seeds = self._rng.integers(0, 2**31 - 1, size=n_snapshots)
         noiseless = noise is None or noise.is_noiseless()
-        base = circuit.evolved_state() if noiseless else None
+        use_dm = density and not noiseless
+        if noiseless:
+            base = circuit.evolved_state()             # statevector, evolved once
+        elif use_dm:
+            base = circuit.evolved_density(noise)       # exact noisy density matrix, once
+        else:
+            base = None                                 # trajectory: re-evolve per shot
         factors = np.zeros((n_snapshots, nq, 3))
         for s in range(n_snapshots):
-            state = base.copy() if noiseless else circuit.evolved_state(noise)
+            state = base.copy() if base is not None else circuit.evolved_state(noise)
             row = axes[s]
             for q in range(nq):
                 self._rotate_to_z(state, q, row[q])

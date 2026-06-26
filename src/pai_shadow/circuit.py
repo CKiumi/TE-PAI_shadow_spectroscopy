@@ -284,9 +284,25 @@ class Circuit:
         ``.copy()`` it and take many cheap measurements of the same state (e.g.
         classical-shadow snapshots) without re-applying the (possibly deep)
         circuit each time. With a :class:`NoiseSpec` each call is one independent
-        stochastic (trajectory) realisation, so it must be re-evolved per shot.
+        stochastic (trajectory) realisation -- statistically identical to sampling
+        a shot from the exact noisy density matrix, but far cheaper for the many
+        distinct circuits TE-PAI generates -- so it is re-evolved per shot.
         """
         state = self._new_state(density=False)
+        self._apply(state, noise)
+        return state
+
+    def evolved_density(self, noise: NoiseSpec | None = None) -> DensityMatrix:
+        """qulacs ``DensityMatrix`` after applying the circuit with **exact**
+        noise channels.
+
+        qulacs applies each noise gate as the full CPTP channel on the density
+        matrix (not a stochastic trajectory), so this is the exact noisy output
+        state. It is evolved once and can be measured with ``.sampling(n, seed)``
+        for ``n`` single shots -- cheaper than re-evolving per shot when one
+        circuit (e.g. a Trotter circuit) needs many shots.
+        """
+        state = self._new_state(density=True)
         self._apply(state, noise)
         return state
 
@@ -330,3 +346,47 @@ def weighted_expectations(circuits, weights, pauli: str,
             c._apply(state, noise)
             out[k] = w * np.real(obs.get_expectation_value(state))
     return out
+
+
+def make_observables(paulis: Sequence[str], nq: int) -> List[Optional[Observable]]:
+    """Pre-parse a list of Pauli strings into reusable qulacs ``Observable`` objects."""
+    return [_make_observable(p, nq) for p in paulis]
+
+
+def weighted_exact_data_row(circuits, weights, observables,
+                            noise: NoiseSpec | None = None) -> np.ndarray:
+    """Exact (infinite-shot) TE-PAI data-matrix row for many observables.
+
+    Each circuit is evolved **once** as a statevector and the *exact* expectation
+    of every observable is read off that single state, then accumulated with the
+    circuit's quasiprobability weight. With a :class:`NoiseSpec` the evolution is a
+    single stochastic (trajectory) realisation -- the noise gates act on the
+    statevector -- so averaging over the ``M`` circuits recovers the noisy
+    expectation. Returns ``(1/M) * sum_s w_s * <O>_s`` per observable
+    (length ``len(observables)``).
+
+    Versus a classical-shadow snapshot this removes the single-shot ``3**k``
+    measurement variance, leaving only the TE-PAI sampling variance
+    ``gamma**2 / M`` (plus, when noisy, the trajectory variance) -- the regime in
+    which the spectra are clean (paper Fig. 1/2). The cost is evaluating every
+    observable per circuit rather than one shared random measurement. Using a
+    statevector trajectory (not a density matrix) keeps this affordable.
+    """
+    weights = np.asarray(weights, dtype=float)
+    No = len(observables)
+    acc = np.zeros(No)
+    if len(circuits) == 0:
+        return acc
+    nq = circuits[0].num_qubits
+    apply_noise = None if _noiseless(noise) else noise
+    v = circuits[0]._init_vector()
+    state = QuantumState(nq)                       # reused buffer (statevector)
+    for c, w in zip(circuits, weights):
+        if v is not None:
+            state.load(v)
+        else:
+            state.set_zero_state()
+        c._apply(state, apply_noise)               # trajectory shot when noisy
+        for i, obs in enumerate(observables):
+            acc[i] += w if obs is None else w * np.real(obs.get_expectation_value(state))
+    return acc / len(circuits)
